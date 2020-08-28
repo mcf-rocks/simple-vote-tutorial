@@ -7,7 +7,7 @@
 
 This is the code for a tutorial, which explains step-by-step how to write, deploy, and interact with a smart contract on the Solana Blockchain. It intentionally translates an existing (and quite famous) tutorial for Ethereum, aiming at exact functional compatibility. The tutorial works from the simple to the complex, and therefore includes multiple versions of the program and front-end, the final version is a web page interacting with the contract back-end on the Solana Mainnet.
 
-This code is designed to be used with the [Tutorial](https://medium.com/@smith_10562/a-simple-solana-dapp-tutorial-6dedbdf65444)
+This code is designed to be used with the [Simple Solana Dapp Tutorial](https://medium.com/@smith_10562/a-simple-solana-dapp-tutorial-6dedbdf65444)
 
 ## Quick Start
 
