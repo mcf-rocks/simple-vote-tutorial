@@ -1,0 +1,25 @@
+<html>
+<head>
+
+  <script src="./solana-web3.js/lib/index.iife.js"></script> 
+
+  <script>
+    async function latest() {
+      const url = 'http://34.64.164.198:8899'
+      const connection = await new solanaWeb3.Connection(url, 'recent')
+      let count = await connection.getTransactionCount()
+      var myDiv = document.getElementById('myDiv')
+      myDiv.innerHTML = count
+      setTimeout(latest,1000)
+    }
+  </script>
+
+</head>
+<body onload="latest()">
+  <div id="myDiv"> *** replace me *** </div>
+
+</body>
+</html>
+
+
+

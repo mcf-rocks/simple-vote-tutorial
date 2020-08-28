@@ -1,0 +1,46 @@
+<html>
+<head>
+
+  <script src="./solana-web3.js/lib/index.iife.js"></script>   
+
+  <script>
+
+    const url = 'http://34.64.164.198:8899'
+
+    function skStringToAccount(skString) {
+      return new solanaWeb3.Account( Uint8Array.from(skString.split(',')) )
+    }
+
+    async function pageload() {
+    
+      if ( document.cookie == null || document.cookie == 'NONE' ) {
+        const account = new solanaWeb3.Account()
+        document.cookie = account.secretKey
+      }
+    
+      const account = skStringToAccount(document.cookie)
+      const address = account.publicKey.toString()
+      document.getElementById('address').innerHTML = address
+
+      const connection = await new solanaWeb3.Connection(url, 'recent')
+      const balance = await connection.getBalance(account.publicKey)
+      const displayBal = balance + " lamports (" + balance/solanaWeb3.LAMPORTS_PER_SOL + " SOL)"
+      document.getElementById('balance').innerHTML = displayBal
+    }
+
+  </script>
+
+</head>
+<body onload="pageload()">
+
+  <div style="float: left">Address:</div> <div id="address"> </div>
+  <div style="float: left">Balance:</div> <div id="balance"> </div>
+
+  <button onclick="document.cookie='NONE'; location.reload();">Destroy Wallet</button>
+  <button onclick="alert('['+document.cookie+']');">Show Secret Key</button>
+
+</body>
+</html>
+
+
+

@@ -1,0 +1,6 @@
+export RUST_LOG=solana_runtime::system_instruction_processor=trace,solana_runtime::message_processor=info,solana_bpf_loader=debug,solana_bpf_loader_program=info,solana_rbpf=trace
+docker-machine start default
+docker-machine env default
+docker-machine ssh default -f -N -L 8899:localhost:8899
+eval "$(docker-machine env default)"
+npm run localnet:up
