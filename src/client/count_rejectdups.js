@@ -7,7 +7,7 @@ import {
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js'
 
-import * as BufferLayout from 'buffer-layout';
+import * as BufferLayout from 'buffer-layout'
 
 import {getOurAccount} from './ourAccount'
 import {getNodeConnection} from './nodeConnection'

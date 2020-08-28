@@ -2,12 +2,15 @@
   "name": "simplevotetutorial",
   "version": "0.0.1",
   "description": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mcf-rocks/simple-vote-tutorial"
+  },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "testnetDefaultChannel": "v1.3.4",
   "scripts": {
-    "_comment": "----------------------------",
     "update_docker": "solana-localnet update",
     "start_docker": "./start_docker",
     "stop_docker": "./stop_docker",

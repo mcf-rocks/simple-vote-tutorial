@@ -7,7 +7,7 @@ import {
 } from '@solana/web3.js'
 import fs from 'mz/fs'
 
-import {sendAndConfirmTransaction} from './util/send-and-confirm-transaction';
+import {sendAndConfirmTransaction} from './util/send-and-confirm-transaction'
 
 
 export async function estCostLoadProgram(connection, pathToProgram) {
