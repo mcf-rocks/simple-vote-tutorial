@@ -7,6 +7,8 @@
 
 This is the code for a tutorial, which explains step-by-step how to write, deploy, and interact with a smart contract on the Solana Blockchain. It intentionally translates an existing (and quite famous) tutorial for Ethereum, aiming at exact functional compatibility. The tutorial works from the simple to the complex, and therefore includes multiple versions of the program and front-end, the final version is a web page interacting with the contract back-end on the Solana Mainnet.
 
+This code is designed to be used with the [Tutorial](https://medium.com/@smith_10562/a-simple-solana-dapp-tutorial-6dedbdf65444)
+
 ## Quick Start
 
 The following dependencies are required to build and run this example,
@@ -24,13 +26,7 @@ $ cargo --version
 
 If this is your first time using Docker or Rust, these [Installation Notes](README-installation-notes.md) might be helpful.
 
-[Solana documentation](https://docs.solana.com/)
-
-This code is designed to be used with the [Tutorial](https://medium.com/@smith_10562/a-simple-solana-dapp-tutorial-6dedbdf65444)
-
-But if you just want to 'make it do something':
-
-Clone this github
+This code is designed to be used with the tutorial, but if you just want to 'make it do something':
 
 ```
 cd simple-vote-tutorial
@@ -49,8 +45,8 @@ You just voted via a smart contract on Solana (devnet).
 
 More information about how Solana works is available in the [Solana documentation](https://docs.solana.com/) and all the source code is available on [github](https://github.com/solana-labs/solana)
 
-Further questions?  Visit us on [Discord](https://discordapp.com/invite/pquxPsq)
+Further questions?  Visit the [Discord](https://discordapp.com/invite/pquxPsq)
 
-- [Solana web3.js SDK](https://github.com/solana-labs/solana-web3.js)
-- [Solana web3 API](https://solana-labs.github.io/solana-web3.js)
+- [Solana Rust SDK](https://docs.rs/solana-sdk/1.3.4/solana_sdk/)
+- [Solana web3 SDK](https://solana-labs.github.io/solana-web3.js)
 
