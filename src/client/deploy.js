@@ -1,6 +1,7 @@
 
 import {
     BPF_LOADER_DEPRECATED_PROGRAM_ID,
+    BPF_LOADER_PROGRAM_ID,
     SystemProgram,
     Account,
     BpfLoader,
@@ -29,7 +30,8 @@ export async function loadProgram(connection, payerAccount, pathToProgram) {
 
   const programAccount = new Account()
 
-  await BpfLoader.load(connection, payerAccount, programAccount, data, BPF_LOADER_DEPRECATED_PROGRAM_ID)
+  //await BpfLoader.load(connection, payerAccount, programAccount, data, BPF_LOADER_DEPRECATED_PROGRAM_ID)
+  await BpfLoader.load(connection, payerAccount, programAccount, data, BPF_LOADER_PROGRAM_ID)
 
   return programAccount.publicKey
 }
