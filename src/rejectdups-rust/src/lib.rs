@@ -497,4 +497,4 @@ mod test {
 
 // Required to support info! in tests
 #[cfg(not(target_arch = "bpf"))]
-solana_sdk_bpf_test::stubs!();
+solana_sdk::program_stubs!();
