@@ -1,0 +1,5 @@
+docker-machine start default
+docker-machine env default
+docker-machine ssh default -f -N -L 8899:localhost:8899
+eval "$(docker-machine env default)"
+npm run localnet:up

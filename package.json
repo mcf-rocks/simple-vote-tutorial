@@ -13,6 +13,7 @@
   "scripts": {
     "update_docker": "solana-localnet update",
     "start_docker": "./start_docker",
+    "start_docker_normal": "./start_docker_normal",
     "stop_docker": "./stop_docker",
     "solana_logs": "solana-localnet logs -f",
     "localnet_up": "set -x; solana-localnet down; set -e; solana-localnet up",
