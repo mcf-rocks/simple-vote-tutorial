@@ -23,27 +23,27 @@
 
     function createCookie(name,value,days) {
       if (days) {
-        var date = new Date();
-        date.setTime(date.getTime()+(days*24*60*60*1000));
-        var expires = "; expires="+date.toUTCString();
+        var date = new Date()
+        date.setTime(date.getTime()+(days*24*60*60*1000))
+        var expires = "; expires="+date.toUTCString()
       }
-      else var expires = "";
-      document.cookie = name+"="+value+expires+"; path=/";
+      else var expires = ""
+      document.cookie = name+"="+value+expires+"; path=/"
     }
 
     function readCookie(name) {
-      var nameEQ = name + "=";
-      var ca = document.cookie.split(';');
+      var nameEQ = name + "="
+      var ca = document.cookie.split(';')
       for(var i=0;i < ca.length;i++) {
-          var c = ca[i];
-          while (c.charAt(0)==' ') c = c.substring(1,c.length);
-          if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
+          var c = ca[i]
+          while (c.charAt(0)==' ') c = c.substring(1,c.length)
+          if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length)
       }
-      return null;
+      return null
     }
 
     function eraseCookie(name) {
-      createCookie(name,"",-1);
+      createCookie(name,"",-1)
     }
 
     const candidateNames = [ 'GOLEM', 'TRUMP', 'BIDEN' ]
@@ -161,7 +161,7 @@
           confirmations: 1,
           skipPreflight: true,
         },
-      );
+      )
 
       const body = {
         time: new Date(when).toString(),
@@ -171,11 +171,11 @@
             keys: i.keys.map(keyObj => keyObj.pubkey.toBase58()),
             programId: i.programId.toBase58(),
             data: '0x' + i.data.toString('hex'),
-          };
+          }
         }),
-      };
+      }
 
-      notify(title, body);
+      notify(title, body)
     }
 
     async function vote(candidate) {
@@ -197,7 +197,7 @@
 
       // make check account
 
-      const rentExemption = await connection.getMinimumBalanceForRentExemption(4);
+      const rentExemption = await connection.getMinimumBalanceForRentExemption(4)
       const checkAccountPK = await solanaWeb3.PublicKey.createWithSeed(account.publicKey, seed, contractAddrPK)
       let params = {
         fromPubkey: account.publicKey,  

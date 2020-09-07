@@ -133,7 +133,7 @@
       }
 
 
-      // make create check account transaction
+      // make the everything transaction
 
       const checkAccountPK = await solanaWeb3.PublicKey.createWithSeed(account.publicKey, seed, contractProgramPK)
 
@@ -147,31 +147,7 @@
         newAccountPubkey: checkAccountPK,
       }
 
-      const transaction1 = solanaWeb3.SystemProgram.createAccountWithSeed( params )
-
-      transaction1.recentBlockhash = (await fetchWait( ourServer + '/recentBlockhash' )).blockhash
-
-      transaction1.sign(account)
-
-      const bytesT1 = transaction1.serialize()
-
-      const jsonT1 = JSON.stringify( bytesT1 )
-
-      // pass it back to the server for dispatch
-
-      console.log("Submitting create check-account transaction for account:", checkAccountPK.toString())
-
-      const statusT1 = await fetchWait( ourServer + '/submitTransaction' + '?transaction=' + jsonT1 )
-
-      console.log("Status of check-account transaction:", statusT1)
-
-      if ( statusT1.err ) {
-        alert("Sorry, your vote failed: " + statusT1.err)
-        return
-      }
-
-
-      // make voting transaction
+      let transaction = solanaWeb3.SystemProgram.createAccountWithSeed( params )
 
       const instruction_data = new Uint8Array([candidate])
 
@@ -186,32 +162,30 @@
         data: instruction_data,
       })
 
-      const transaction2 = new solanaWeb3.Transaction().add(instruction)
+      transaction = transaction.add(instruction)
 
       // assign recent blockhash
 
-      transaction2.recentBlockhash = (await fetchWait( ourServer + '/recentBlockhash' )).blockhash
+      transaction.recentBlockhash = (await fetchWait( ourServer + '/recentBlockhash' )).blockhash
 
       // sign it
 
-      transaction2.sign(account)
+      transaction.sign(account)
 
       // serialize it
 	    
-      const bytesT2 = transaction2.serialize()
+      const bytes = transaction.serialize()
 
-      const jsonT2 = JSON.stringify( bytesT2 )
+      const json = JSON.stringify( bytes )
 
       // pass it back to the server for dispatch
 
-      console.log("Submitting voting transaction for candidate:",candidate," contract data account:", contractDataPK.toString())
+      const status = await fetchWait( ourServer + '/submitTransaction' + '?transaction=' + json )
 
-      const statusT2 = await fetchWait( ourServer + '/submitTransaction' + '?transaction=' + jsonT2 )
+      console.log("Status of transaction:", status)
 
-      console.log("Status of voting transaction:", statusT2)
-
-      if ( statusT2.err ) {
-        alert("Sorry, your vote failed: " + statusT2.err)
+      if ( status.err ) {
+        alert("Sorry, your vote failed: " + status.err)
         return
       }
     }

@@ -1,0 +1,24 @@
+-- get different BPF
+
+change testnetDefaultChannel in package.json
+npm run bpf-sdk:update
+
+-- get corresponding docker image
+also driven by testnetDefaultChannel in package.json
+npm run update_docker
+-- STOP AND RESTART
+
+-- js sdk
+delete package-lock.json and node_modules
+npm i
+
+-- rust crate: see cargo.toml 
+version = '1.2.3' // means 1.2.3 or newer if available
+version = '=1.2.3' // means exactly 
+cargo fetches relevant crates on build, if you change cargo.toml, build again
+
+docker:
+
+docker container ls
+docker container stop
+npm run start_docker
