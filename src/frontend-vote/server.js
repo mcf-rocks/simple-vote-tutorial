@@ -159,11 +159,12 @@ app.get('*', async function (request, response, next) {
     let tSig
 
     try {
-      tSig = await connection.sendRawTransaction( bytes )
+      tSig = await connection.sendRawTransaction( bytes, { skipPreflight: true } )
     } catch(err) {
       console.log("Send FAILED:",err)
+      const content = JSON.stringify( { err: 'Transaction rejected' } )
       response.writeHead(200, { 'Content-Type': 'application/json' })
-      response.end({err: 'send failed'}, 'utf-8')
+      response.end(content, 'utf-8')
       return
     }
 
