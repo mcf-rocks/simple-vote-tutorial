@@ -2,20 +2,35 @@
 <head>
 
   <script src="./solana-web3.js/lib/index.iife.js"></script>   
-
+  
   <script>
 
-    const url = 'http://34.64.164.198:8899'
+    const ourServer = 'https://165.22.86.204'
+ 
+    const contractProgramAddress = 'CkFsUJDJXWatS8yLL3WZfyoKbTAQGtRNXpswBcfZsbi7'
+    const contractDataAddress = '6VPjctSji8E2hNEh5r3Gkm3kP6EhDjHkuUaeiwoxWhTp'
 
-    const contractAddrPK = new solanaWeb3.PublicKey('HPX9CUjj6QpH4eEF5S2UQdrVdjBMErnZeJii2QpF7grj')
-    const contractDataPK = new solanaWeb3.PublicKey('6aKHW6jcFhV6yAr9ydZoTsYKHDN5qhbsRaz5E9SsZapQ')
+    const contractProgramPK = new solanaWeb3.PublicKey( contractProgramAddress )
+    const contractDataPK = new solanaWeb3.PublicKey( contractDataAddress )
 
     const seed = 'checkvote'
 
-    const WALLET = 'votedemowalletsk'
+    const WALLET = 'voteddemowalletsk'
 
     var connection
     var account
+
+    var accountBalance = -1
+    var voteCost = -1
+    var rentExemption = -1
+
+    var alreadyVoted = -1
+    var newLeader = 0
+    var leader = -1
+
+    var checkAccountPubkey
+
+    var voting = 0
 
     function skStringToAccount(skString) {
       return new solanaWeb3.Account( Uint8Array.from(skString.split(',')) )
@@ -23,106 +38,130 @@
 
     function createCookie(name,value,days) {
       if (days) {
-        var date = new Date()
-        date.setTime(date.getTime()+(days*24*60*60*1000))
-        var expires = "; expires="+date.toUTCString()
+        var date = new Date();
+        date.setTime(date.getTime()+(days*24*60*60*1000));
+        var expires = "; expires="+date.toUTCString();
       }
-      else var expires = ""
-      document.cookie = name+"="+value+expires+"; path=/"
+      else var expires = "";
+      document.cookie = name+"="+value+expires+"; path=/; SameSite=Strict";
     }
 
     function readCookie(name) {
-      var nameEQ = name + "="
-      var ca = document.cookie.split(';')
+      var nameEQ = name + "=";
+      var ca = document.cookie.split(';');
       for(var i=0;i < ca.length;i++) {
-          var c = ca[i]
-          while (c.charAt(0)==' ') c = c.substring(1,c.length)
-          if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length)
+          var c = ca[i];
+          while (c.charAt(0)==' ') c = c.substring(1,c.length);
+          if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
       }
-      return null
+      return null;
     }
 
     function eraseCookie(name) {
-      createCookie(name,"",-1)
+      createCookie(name,"",-1);
     }
 
     const candidateNames = [ 'GOLEM', 'TRUMP', 'BIDEN' ]
 
-    var alreadyVoted = null 
-    var balance = -1 
-    var cost = -1
-    var newLeader = 0
-    var leader = -1
+    async function fetchWait (url) {
+      let response = await fetch(url);
+      let data = await response.json();
+      return data;
+    }
+
+    async function fetchCallBack (url, func) {
+      let response = await fetch(url);
+      let data = await response.json();
+      func(data);
+    }
+
+    
 
     async function update() {
 
-      balance = await connection.getBalance(account.publicKey)
-      const displayBal = balance + " lamports (" + balance/solanaWeb3.LAMPORTS_PER_SOL + " Sol)"
-      document.getElementById('balance').innerHTML = displayBal
+      // Account balance
 
-      const checkAccountPubkey = await solanaWeb3.PublicKey.createWithSeed(account.publicKey, seed, contractAddrPK)
-      alreadyVoted = await connection.getAccountInfo(checkAccountPubkey)
+      const accountBalanceURL = ourServer + '/accountBalance' + '?address=' + account.publicKey.toString()
+      fetchCallBack(accountBalanceURL, function({balance}) {
+	accountBalance = balance
+        const displayBal = balance + " lamports (" + balance/solanaWeb3.LAMPORTS_PER_SOL + " Sol)"
+        document.getElementById('balance').innerHTML = displayBal
+      })
 
-      if ( alreadyVoted ) {
-        const votedFor = (new Uint32Array(alreadyVoted.data.buffer))[0]
-        if ( votedFor > 0 ) {
-          document.getElementById('voterStatus').innerHTML = "<div class='status'>You voted for: "+ candidateNames[ votedFor ] +"</div>"
+      // Vote status
+
+      if ( !voting ) {
+        const voterStatusURL = ourServer + '/voterStatus' + '?voterCheckAddress=' + checkAccountPubkey.toString()
+        fetchCallBack(voterStatusURL, function({voted}) {
+          alreadyVoted = voted
+          if (alreadyVoted==99) {  // they have not voted
+
+            if (accountBalance===0) {
+              document.getElementById('voterStatus').innerHTML = "<div class='err'>^ Deposit Funds To Vote ^</div>"
+            }
+            if (accountBalance>voteCost && voteCost>0) {
+              document.getElementById('voterStatus').innerHTML = "<div class='status'>Ready to Vote</div>"
+            }
+            if (accountBalance>0 && accountBalance<voteCost && voteCost>0) {
+              document.getElementById('voterStatus').innerHTML = "<div class='err'>More funds required</div>"
+            }
+
+          } 
+          else if (alreadyVoted==1 || alreadyVoted==2) {
+  
+            document.getElementById('voterStatus').innerHTML = "<div class='status'>You voted for: "+ candidateNames[ alreadyVoted ] +"</div>"
+  
+          }
+          else {
+            console.log("Unexpected voter status:",alreadyVoted)
+          }
+        })
+      }
+
+      // Vote counts, who is current leader
+
+      const readCountURL = ourServer + '/readCount' + '?contractDataAddress=' + contractDataAddress 
+      fetchCallBack(readCountURL, function({vc1,vc2}) {
+
+        document.getElementById('count1').innerHTML = vc1
+        document.getElementById('count2').innerHTML = vc2
+
+        if ( vc1 > vc2 ) { 
+          newLeader = 1 
+        } else if ( vc2 > vc1 ) { 
+          newLeader = 2 
         } else {
-          // for a brief moment the account will exist at zero...
-          document.getElementById('voterStatus').innerHTML = "<div class='status'>Vote submitted to Network</div>"
+          newLeader = 0
         }
-      } else { 
-        if (balance===0) {
-          document.getElementById('voterStatus').innerHTML = "<div class='err'>^ Deposit Funds To Vote ^</div>"
-        }
-        if (balance>cost && cost>0) {
-          document.getElementById('voterStatus').innerHTML = "<div class='status'>Ready to Vote</div>"
-        }
-        if (balance>0 && balance<cost && cost>0) {
-          document.getElementById('voterStatus').innerHTML = "<div class='err'>More funds required</div>"
-        }
-      }
 
-      // Vote counts
-
-      const accountInfo = await connection.getAccountInfo(contractDataPK)
-      let dataAsU32 = new Uint32Array(accountInfo.data.buffer)
-      let count1 = dataAsU32[0] 
-      let count2 = dataAsU32[1] 
-
-      document.getElementById('count1').innerHTML = count1
-      document.getElementById('count2').innerHTML = count2
-
-      if ( count1 > count2 ) { 
-        newLeader = 1 
-      } else if ( count2 > count1 ) { 
-        newLeader = 2 
-      } else {
-        newLeader = 0
-      }
-
-      if ( leader !== newLeader ) {
-        leader = newLeader
-        if ( leader === 0 ) {
-          document.getElementById('fuhrer').innerHTML = 
-              "<img class='w3-padding w3-circle' src='GOLEM.jpg' alt='EVEN STEVENS' style='text-align: center; border-style:solid; border-width:1px; border-color:#111111ff; margin-top:10px; height:100%;'>"
+        if ( leader !== newLeader ) {
+          leader = newLeader
+          if ( leader === 0 ) {
+            document.getElementById('winning').innerHTML = "NO CURRENT LEADER"
+            document.getElementById('fuhrer').innerHTML = 
+                "<img class='w3-padding w3-circle' src='GOLEM.jpg' alt='EVEN STEVENS' style='text-align: center; border-style:solid; border-width:1px; border-color:#111111ff; margin-top:10px; height:100%;'>"
+          }
+          if ( leader === 1 ) {
+            document.getElementById('winning').innerHTML = "CURRENTLY ASCENDANT"
+            document.getElementById('fuhrer').innerHTML = 
+                "<img class='w3-padding w3-circle' src='TRUMP_FTW.jpg' alt='ORANGE GOD RISING' style='text-align: center; border-style:solid; border-width:1px; border-color:#111111ff; margin-top:10px; height:100%;'>"
+          }
+          if ( leader === 2 ) {
+            document.getElementById('winning').innerHTML = "CURRENTLY ASCENDANT"
+            document.getElementById('fuhrer').innerHTML = 
+                "<img class='w3-padding w3-circle' src='BIDEN_FTW.jpg' alt='NO MALARKEY' style='text-align: center; border-style:solid; border-width:1px; border-color:#111111ff; margin-top:10px; height:100%;'>"
+          }
         }
-        if ( leader === 1 ) {
-          document.getElementById('fuhrer').innerHTML = 
-              "<img class='w3-padding w3-circle' src='TRUMP_FTW.jpg' alt='ORANGE GOD RISING' style='text-align: center; border-style:solid; border-width:1px; border-color:#111111ff; margin-top:10px; height:100%;'>"
-        }
-        if ( leader === 2 ) {
-          document.getElementById('fuhrer').innerHTML = 
-              "<img class='w3-padding w3-circle' src='BIDEN_FTW.jpg' alt='NO MALARKEY' style='text-align: center; border-style:solid; border-width:1px; border-color:#111111ff; margin-top:10px; height:100%;'>"
-        }
-      }
+      })
+
       console.log("update complete")
       setTimeout(update, 3000) 
     }
 
+
     async function pageload() {
 
-      // User wallet
+      // User wallet 
  
       if ( ! readCookie(WALLET) ) {
         const account = new solanaWeb3.Account()
@@ -133,133 +172,103 @@
       const address = account.publicKey.toString()
       document.getElementById('address').innerHTML = address
 
-      connection = await new solanaWeb3.Connection(url, 'recent')
+      // where user's check-account will be (if it exists)
+
+      checkAccountPubkey = await solanaWeb3.PublicKey.createWithSeed(account.publicKey, seed, contractProgramPK)
 
 
-      // Cost of a vote
-  
-      const rentExemption = await connection.getMinimumBalanceForRentExemption(4)
-      const voteCost = 2 * 5000 // the two signatures
-      cost = rentExemption + voteCost
-      const displayCost = "(democracy costs "+ cost +" lamports, ~"+ cost/solanaWeb3.LAMPORTS_PER_SOL +" Sol)"
+      const voteCostURL = ourServer + '/voteCost' 
+      const c = await fetchWait(voteCostURL)
+      voteCost = c.cost
+      rentExemption = c.rent
+
+      const displayCost = "(democracy costs "+ voteCost +" lamports, ~"+ voteCost/solanaWeb3.LAMPORTS_PER_SOL +" Sol)"
       document.getElementById('voterInvite').innerHTML = "<div class='status'>Please Vote " + displayCost + "</div>"
-
-      // read blockchain and update
 
       update()
 
     }
 
-    async function sendAndConfirmTransaction( notify, title, connection, transaction, ...signers) {
-      const when = Date.now()
-
-      const signature = await solanaWeb3.sendAndConfirmTransaction(
-        connection,
-        transaction,
-        signers,
-        {
-          confirmations: 1,
-          skipPreflight: true,
-        },
-      )
-
-      const body = {
-        time: new Date(when).toString(),
-        signature,
-        instructions: transaction.instructions.map(i => {
-          return {
-            keys: i.keys.map(keyObj => keyObj.pubkey.toBase58()),
-            programId: i.programId.toBase58(),
-            data: '0x' + i.data.toString('hex'),
-          }
-        }),
-      }
-
-      notify(title, body)
-    }
 
     async function vote(candidate) {
 
-      if ( cost > await connection.getBalance(account.publicKey)) {
+      if ( leader == -1 || alreadyVoted == -1 || rentExemption == -1 || voteCost == -1 || accountBalance == -1 ) {
+        alert("There seems to be a problem reading the blockchain, pls contact Admin")
+        return
+      }
+
+      if ( voteCost > accountBalance ) {
         alert("Not enough funds bro, time to get a job?") 
         return
       }
 
-      const checkAccountPubkey = await solanaWeb3.PublicKey.createWithSeed(account.publicKey, seed, contractAddrPK)
-      alreadyVoted = await connection.getAccountInfo(checkAccountPubkey)
+      voting = 1
+      document.getElementById('voterStatus').innerHTML = "<div class='status'>*** Vote Submitted ***</div>"
 
-      if ( alreadyVoted ) {
-        const votedFor = (new Uint32Array(alreadyVoted.data.buffer))[0]
-        if ( votedFor > 0 ) {
-          alert("My dude, you already voted for "+candidateNames[ votedFor ]+", there is no double voting on the blockchain!")
-        } 
-      }
+      // make the transaction
 
-      // make check account
+      const checkAccountPK = await solanaWeb3.PublicKey.createWithSeed(account.publicKey, seed, contractProgramPK)
 
-      const rentExemption = await connection.getMinimumBalanceForRentExemption(4)
-      const checkAccountPK = await solanaWeb3.PublicKey.createWithSeed(account.publicKey, seed, contractAddrPK)
-      let params = {
+      const params = {
         fromPubkey: account.publicKey,  
         lamports: rentExemption,      
         space: 4,                     
         basePubkey: account.publicKey,  
         seed,                          
-        programId: contractAddrPK,       
+        programId: contractProgramPK,
         newAccountPubkey: checkAccountPK,
       }
 
-      const createTransaction = solanaWeb3.SystemProgram.createAccountWithSeed( params )
-
-      let notify = function(receipt) { console.log("Create check-account receipt:",receipt) }
-
-      try {
-        await sendAndConfirmTransaction(
-          notify,
-          'createAccountWithSeed',
-          connection,
-          createTransaction,
-          account,  
-        )
-      } catch (err) {
-        document.getElementById('voterStatus').innerHTML = "<div class='err'>Your vote totally failed dude</div>"
-        console.log(err)
-        return
-      } 
-
-      console.log("User's check account was created at",checkAccountPK.toString())
-
-      // call contract
+      let transaction = solanaWeb3.SystemProgram.createAccountWithSeed( params )
 
       const instruction_data = new Uint8Array([candidate])
 
       const instruction = new solanaWeb3.TransactionInstruction({
-      keys: [
-               {pubkey: contractDataPK, isSigner: false, isWritable: true},             
-               {pubkey: checkAccountPK, isSigner: false, isWritable: true},            
-               {pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false}
-               {pubkey: account.publicKey, isSigner: true, isWritable: false}         
+        keys: [
+               {pubkey: contractDataPK, isSigner: false, isWritable: true},                     // contract's data account
+               {pubkey: checkAccountPK, isSigner: false, isWritable: true},                     // voter's check-account
+               {pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false},     // system rent
+               {pubkey: account.publicKey, isSigner: true, isWritable: false}                   // voter account
             ],
-      programId: contractAddrPK,
-      data: instruction_data,
-    })
+        programId: contractProgramPK,
+        data: instruction_data,
+      })
 
-    notify = function(receipt) { console.log("Vote transaction receipt:",receipt) }
+      transaction = transaction.add(instruction)
 
-    try { 
-      await sendAndConfirmTransaction(
-        notify,
-        'vote',
-        connection,
-        new solanaWeb3.Transaction().add(instruction),
-        account,
-      )
-    } catch (err) {
-        document.getElementById('voterStatus').innerHTML = "<div class='err'>Oh noes, disaster!</div>"
-        console.log(err)
+      // assign recent blockhash
+
+      transaction.recentBlockhash = (await fetchWait( ourServer + '/recentBlockhash' )).blockhash
+
+      // sign it
+
+      transaction.sign(account)
+
+      // serialize it
+	    
+      const bytes = transaction.serialize()
+
+      const json = JSON.stringify( bytes )
+
+      // pass it back to the server for dispatch
+
+      const status = await fetchWait( ourServer + '/submitTransaction' + '?transaction=' + json )
+
+      console.log("Status of transaction:", status)
+
+      if ( status.err ) {
+        if (alreadyVoted==1||alreadyVoted==2) {
+          alert("Sorry, your vote failed: " + status.err.toString() + 
+                " because you already voted for " + candidateNames[ alreadyVoted ] )
+        } else {
+          alert("Sorry, your vote failed: " + status.err.toString())
+        }
+        voting = 0
         return
+      }
+
+      voting = 0
     }
-  }
 
   </script>
 
@@ -408,7 +417,6 @@
     text-align: center;
   }
 
-  /* Clear floats after the columns */
   .row:after {
     content: "";
     display: table;
@@ -504,7 +512,7 @@
               <button class="mainButton" style="margin-top:20%" onclick="vote(1);">VOTE TRUMP</button>
             </div>
             <div class="column" style="width:50%; margin-top:15px;">
-              <div class='smalltext'>CURRENTLY ASCENDANT</div>
+              <div id="winning" class='smalltext'>CURRENTLY ASCENDANT</div>
                 <div id="fuhrer">
                   <img class="w3-padding w3-circle" alt="LEADER" src="NOTHING.jpg" alt="Who Will It Be Now?" 
                     style="text-align: center; border-style:solid; border-width:1px; border-color:#111111ff; margin-top:10px; height:100%;">
@@ -525,13 +533,14 @@
 
   </div>
 
+
   <!-- credits, links etc -->
 
   <div class='bottom'>
       <div class="row" style="height:50%">
       </div>
       <div class="row" style="text-align:center; height:35%">
-        <div class='smalltext'>This is part of a tutorial on how to write Smart Contracts for the Solana Blackchain</div>
+        <div class='smalltext'>This is part of a tutorial on how to write Smart Contracts for the Solana Blockchain</div>
         <a href="https://mcf.rocks">
           <div class='smalltext'>This tutorial was put together by MCF, if you are a Hodler, please consider delegating to our Validator on the Solana Network</div>
         </a>
@@ -540,6 +549,3 @@
 
 </body>
 </html>
-
-
-
