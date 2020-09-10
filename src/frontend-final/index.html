@@ -93,27 +93,29 @@
       if ( !voting ) {
         const voterStatusURL = ourServer + '/voterStatus' + '?voterCheckAddress=' + checkAccountPubkey.toString()
         fetchCallBack(voterStatusURL, function({voted}) {
-          alreadyVoted = voted
-          if (alreadyVoted==99) {  // they have not voted
+          if ( !voting ) {
+            alreadyVoted = voted
+            if (alreadyVoted==99) {  // they have not voted
 
-            if (accountBalance===0) {
-              document.getElementById('voterStatus').innerHTML = "<div class='err'>^ Deposit Funds To Vote ^</div>"
-            }
-            if (accountBalance>voteCost && voteCost>0) {
-              document.getElementById('voterStatus').innerHTML = "<div class='status'>Ready to Vote</div>"
-            }
-            if (accountBalance>0 && accountBalance<voteCost && voteCost>0) {
-              document.getElementById('voterStatus').innerHTML = "<div class='err'>More funds required</div>"
-            }
+              if (accountBalance===0) {
+                document.getElementById('voterStatus').innerHTML = "<div class='err'>^ Deposit Funds To Vote ^</div>"
+              }
+              if (accountBalance>voteCost && voteCost>0) {
+                document.getElementById('voterStatus').innerHTML = "<div class='status'>Ready to Vote</div>"
+              }
+              if (accountBalance>0 && accountBalance<voteCost && voteCost>0) {
+                document.getElementById('voterStatus').innerHTML = "<div class='err'>More funds required</div>"
+              }
 
-          } 
-          else if (alreadyVoted==1 || alreadyVoted==2) {
+            } 
+            else if (alreadyVoted==1 || alreadyVoted==2) {
   
-            document.getElementById('voterStatus').innerHTML = "<div class='status'>You voted for: "+ candidateNames[ alreadyVoted ] +"</div>"
+              document.getElementById('voterStatus').innerHTML = "<div class='status'>You voted for: "+ candidateNames[ alreadyVoted ] +"</div>"
   
-          }
-          else {
-            console.log("Unexpected voter status:",alreadyVoted)
+            }
+            else {
+              console.log("Unexpected voter status:",alreadyVoted)
+            }
           }
         })
       }
@@ -258,7 +260,7 @@
 
       if ( status.err ) {
         if (alreadyVoted==1||alreadyVoted==2) {
-          alert("Sorry, your vote failed: " + status.err.toString() + 
+          alert("Sorry, your vote failed: " + 
                 " because you already voted for " + candidateNames[ alreadyVoted ] )
         } else {
           alert("Sorry, your vote failed: " + status.err.toString())
