@@ -14,7 +14,8 @@ switch ( process.env.CLUSTER ) {
 
   case 'mainnet-beta':
     console.log('attempting to connect to mainnet')
-    url = 'http://34.64.164.198:8899'
+    //url = 'http://34.64.164.198:8899'
+    url = 'https://api.mainnet-beta.solana.com'
     break;
 
   case 'testnet':
@@ -29,13 +30,15 @@ switch ( process.env.CLUSTER ) {
 
   case 'devnet':
     console.log('attempting to connect to devnet')
-    url = 'http://34.82.57.86:8899'
+    //url = 'http://34.82.57.86:8899'
+    url = 'http://devnet.solana.com'
     break;
 
   default:
     console.log('attempting to connect to local node')
     url = 'http://localhost:8899'
 }
+
 
 
 export async function getNodeConnection() {
