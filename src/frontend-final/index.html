@@ -167,7 +167,7 @@
  
       if ( ! readCookie(WALLET) ) {
         const account = new solanaWeb3.Account()
-        createCookie(WALLET,account.secretKey)
+        createCookie(WALLET,account.secretKey,365)
       }
     
       account = skStringToAccount(readCookie(WALLET))
