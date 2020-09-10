@@ -5,7 +5,7 @@ This project cannot be built directly via cargo and instead requires the build s
 
 To build via NPM, from the repo's root directory:
 
-`$ npm run build:program`
+`$ npm run build_simplest`
 
 You can also build the project directly via:
 
