@@ -5,20 +5,47 @@
 
   <script>
 
-    const url = 'http://34.64.164.198:8899'
+    const url = 'http://api.mainnet-beta.solana.com'
+
+    const WALLET = 'voteddemowalletsk'
 
     function skStringToAccount(skString) {
       return new solanaWeb3.Account( Uint8Array.from(skString.split(',')) )
     }
 
+    function createCookie(name,value,days) {
+      if (days) {
+        var date = new Date();
+        date.setTime(date.getTime()+(days*24*60*60*1000));
+        var expires = "; expires="+date.toUTCString();
+      }
+      else var expires = "";
+      document.cookie = name+"="+value+expires+"; path=/; SameSite=Strict";
+    }
+
+    function readCookie(name) {
+      var nameEQ = name + "=";
+      var ca = document.cookie.split(';');
+      for(var i=0;i < ca.length;i++) {
+          var c = ca[i];
+          while (c.charAt(0)==' ') c = c.substring(1,c.length);
+          if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
+      }
+      return null;
+    }
+
+    function eraseCookie(name) {
+      createCookie(name,"",-1);
+    }
+
     async function pageload() {
-    
-      if ( document.cookie == null || document.cookie == 'NONE' ) {
+
+      if ( ! readCookie(WALLET) ) {
         const account = new solanaWeb3.Account()
-        document.cookie = account.secretKey
+        createCookie(WALLET,account.secretKey,365)
       }
     
-      const account = skStringToAccount(document.cookie)
+      const account = skStringToAccount( readCookie(WALLET) )
       const address = account.publicKey.toString()
       document.getElementById('address').innerHTML = address
 
@@ -36,8 +63,8 @@
   <div style="float: left">Address:</div> <div id="address"> </div>
   <div style="float: left">Balance:</div> <div id="balance"> </div>
 
-  <button onclick="document.cookie='NONE'; location.reload();">Destroy Wallet</button>
-  <button onclick="alert('['+document.cookie+']');">Show Secret Key</button>
+  <button onclick="eraseCookie(WALLET); location.reload();">Destroy Wallet</button>
+  <button onclick="alert('['+readCookie(WALLET)+']');">Show Secret Key</button>
 
 </body>
 </html>
