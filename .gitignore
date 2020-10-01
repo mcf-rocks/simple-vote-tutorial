@@ -5,3 +5,4 @@
 /dist
 .env
 keypair.json
+**/.DS_Store
