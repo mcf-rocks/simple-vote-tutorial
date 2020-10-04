@@ -1,9 +1,16 @@
 use byteorder::{ByteOrder, LittleEndian};
 use solana_sdk::{
-    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, info,
-    decode_error::DecodeError, program_error::ProgramError, account_info::next_account_info, pubkey::Pubkey,
-    sysvar::{self, Sysvar}, rent::Rent,
+    account_info::next_account_info,
+    account_info::AccountInfo,
+    decode_error::DecodeError,
+    entrypoint,
+    entrypoint::ProgramResult,
+    info,
+    program_error::ProgramError,
     program_pack::{Pack, Sealed},
+    pubkey::Pubkey,
+    rent::Rent,
+    sysvar::{self, Sysvar},
 };
 
 use num_derive::FromPrimitive;
@@ -42,12 +49,11 @@ pub struct Vote {
 impl Sealed for Vote {}
 
 impl Pack for Vote {
-
     const LEN: usize = 1;
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
         if src.len() != 1 {
-            info!("Instruction data must be 1 byte"); 
+            info!("Instruction data must be 1 byte");
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -56,17 +62,12 @@ impl Pack for Vote {
         if candidate != 1 || candidate != 2 {
             info!("Vote must be for candidate 1 or 2");
             return Err(VoteError::UnexpectedCandidate.into());
-        } 
-        Ok(Vote {
-            candidate,
-        })
+        }
+        Ok(Vote { candidate })
     }
 
     fn pack_into_slice(&self, _dst: &mut [u8]) {}
 }
-
-
- 
 
 // Vote Check structure, which is one 4 byte u32 number
 // contains zero if they havn't voted, or the candidate number if they have
@@ -78,7 +79,6 @@ pub struct VoteCheck {
 impl Sealed for VoteCheck {}
 
 impl Pack for VoteCheck {
-
     const LEN: usize = 4;
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
@@ -92,19 +92,17 @@ impl Pack for VoteCheck {
     }
 }
 
-
 // Vote Count structure, which is two 4 byte u32 numbers
 // first number is candidate 1's vote count, second number is candidate 2's vote count
 
 pub struct VoteCount {
-  pub candidate1: u32,
-  pub candidate2: u32,
+    pub candidate1: u32,
+    pub candidate2: u32,
 }
 
 impl Sealed for VoteCount {}
 
 impl Pack for VoteCount {
-
     const LEN: usize = 8;
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
@@ -120,17 +118,15 @@ impl Pack for VoteCount {
     }
 }
 
-
 // Declare and export the program's entrypoint
 entrypoint!(process_instruction);
 
 // Program entrypoint's implementation
 fn process_instruction(
-    program_id: &Pubkey,             // Public key of program account
-    accounts: &[AccountInfo],        // data accounts
-    instruction_data: &[u8],         // 1 = vote for A, 2 = vote for B
+    program_id: &Pubkey,      // Public key of program account
+    accounts: &[AccountInfo], // data accounts
+    instruction_data: &[u8],  // 1 = vote for A, 2 = vote for B
 ) -> ProgramResult {
-
     info!("Rust program entrypoint");
 
     // get candidate to vote for from instruction_data
@@ -160,26 +156,25 @@ fn process_instruction(
     // The account must be rent exempt, i.e. live forever
     let sysvar_account = next_account_info(accounts_iter)?;
     let rent = <Rent as Sysvar>::from_account_info(sysvar_account)?;
-    if ! sysvar::rent::check_id(sysvar_account.key) {
+    if !sysvar::rent::check_id(sysvar_account.key) {
         info!("Rent system account is not rent system account");
         return Err(ProgramError::InvalidAccountData);
     }
-    if ! rent.is_exempt(check_account.lamports(),check_account.data_len()) {
+    if !rent.is_exempt(check_account.lamports(), check_account.data_len()) {
         info!("Check account is not rent exempt");
         return Err(VoteError::AccountNotRentExempt.into());
     }
 
-    // the voter 
+    // the voter
     let voter_account = next_account_info(accounts_iter)?;
 
     if !voter_account.is_signer {
-      info!("Voter account is not signer");
-      return Err(ProgramError::MissingRequiredSignature);
+        info!("Voter account is not signer");
+        return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let expected_check_account_address = Pubkey::create_with_seed(voter_account.key, 
-                                                                  "checkvote", 
-                                                                  program_id);
+    let expected_check_account_address =
+        Pubkey::create_with_seed(voter_account.key, "checkvote", program_id);
 
     if expected_check_account_address != Ok(*check_account.key) {
         info!("Voter fraud! not the correct check_account.");
@@ -190,29 +185,30 @@ fn process_instruction(
 
     // this unpack reads and deserialises the account data and also checks the data is the correct length
 
-    let mut vote_check = VoteCheck::unpack_unchecked(&check_data).expect("Failed to read VoteCheck");
+    let mut vote_check =
+        VoteCheck::unpack_unchecked(&check_data).expect("Failed to read VoteCheck");
 
     if vote_check.voted_for != 0 {
         info!("Voter fraud! You already voted.");
         return Err(VoteError::AlreadyVoted.into());
     }
 
-
     // Increment vote count of candidate, and record voter's choice
 
     let mut count_data = count_account.try_borrow_mut_data()?;
 
-    let mut vote_count = VoteCount::unpack_unchecked(&count_data).expect("Failed to read VoteCount"); 
+    let mut vote_count =
+        VoteCount::unpack_unchecked(&count_data).expect("Failed to read VoteCount");
 
     match candidate {
         1 => {
             vote_count.candidate1 += 1;
-            vote_check.voted_for = 1; 
+            vote_check.voted_for = 1;
             info!("Voting for candidate1!");
-        },
+        }
         2 => {
             vote_count.candidate2 += 1;
-            vote_check.voted_for = 2; 
+            vote_check.voted_for = 2;
             info!("Voting for candidate2!");
         }
         _ => {
@@ -227,53 +223,48 @@ fn process_instruction(
     Ok(())
 }
 
-
 // tests
 #[cfg(test)]
 mod test {
     use super::*;
     use solana_sdk::clock::Epoch;
 
- 
     static SYSTEM_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0,
     ];
 
     static PROGRAM_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0,
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0,
     ];
 
     static DATA_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
-        2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0,
+        2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0,
     ];
 
     static VOTER_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
-        3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0,
+        3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0,
     ];
 
     static FALSE_CHECK_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
-        4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0,
+        4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0,
     ];
-
-
 
     // single vote
 
     #[test]
     fn test_sanity() {
+        // mock program id
 
-        // mock program id 
-
-        let program_id = Pubkey::new( PROGRAM_ACCOUNT_PUBKEY_BYTES );
+        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES);
 
         // mock contract data account
 
-        let key = Pubkey::new( DATA_ACCOUNT_PUBKEY_BYTES ); // anything 
+        let key = Pubkey::new(DATA_ACCOUNT_PUBKEY_BYTES); // anything
         let mut lamports = 0;
         let mut data = vec![0; 2 * mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
@@ -281,51 +272,51 @@ mod test {
         let owner = program_id;
 
         let contract_data_account = AccountInfo::new(
-            &key,                             // account pubkey
-            false,                            // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            false,            // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
         // mock voter account
 
-        let key = Pubkey::new( VOTER_ACCOUNT_PUBKEY_BYTES );  // anything
+        let key = Pubkey::new(VOTER_ACCOUNT_PUBKEY_BYTES); // anything
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new( SYSTEM_ACCOUNT_PUBKEY_BYTES ); 
+        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
 
         let voter_account = AccountInfo::new(
-            &key,                             // account pubkey
-            true,                             // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            true,             // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
-        // mock voter check_account 
+        // mock voter check_account
 
-        let key = Pubkey::create_with_seed(voter_account.key, "checkvote", &program_id);  // derived (correctly)
+        let key = Pubkey::create_with_seed(voter_account.key, "checkvote", &program_id); // derived (correctly)
         let mut lamports = 0;
         let mut data = vec![0; mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
         let owner = program_id;
 
         let check_account = AccountInfo::new(
-            &key,                             // account pubkey
-            false,                            // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            false,            // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
         let mut instruction_data: Vec<u8> = vec![0];
@@ -343,20 +334,18 @@ mod test {
         assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 0);
     }
 
-
     // must fail where client passes in wrong checking account
 
     #[test]
-    #[should_panic] 
+    #[should_panic]
     fn test_no_vote_without_check() {
+        // mock program id
 
-        // mock program id 
-
-        let program_id = Pubkey::new( PROGRAM_ACCOUNT_PUBKEY_BYTES );
+        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES);
 
         // mock contract data account
 
-        let key = Pubkey::new( DATA_ACCOUNT_PUBKEY_BYTES );  // anything
+        let key = Pubkey::new(DATA_ACCOUNT_PUBKEY_BYTES); // anything
         let mut lamports = 0;
         let mut data = vec![0; 2 * mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
@@ -364,51 +353,51 @@ mod test {
         let owner = program_id;
 
         let contract_data_account = AccountInfo::new(
-            &key,                             // account pubkey
-            false,                            // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            false,            // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
         // mock voter account
 
-        let key = Pubkey::new( VOTER_ACCOUNT_PUBKEY_BYTES );  // anything
+        let key = Pubkey::new(VOTER_ACCOUNT_PUBKEY_BYTES); // anything
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new( SYSTEM_ACCOUNT_PUBKEY_BYTES ); 
+        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
 
         let voter_account = AccountInfo::new(
-            &key,                             // account pubkey
-            true,                             // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            true,             // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
-        // mock voter check_account 
+        // mock voter check_account
 
-        let key = Pubkey::new( FALSE_CHECK_ACCOUNT_PUBKEY_BYTES );  // anything - i.e. NOT THE CORRECT CHECK-ACCOUNT
+        let key = Pubkey::new(FALSE_CHECK_ACCOUNT_PUBKEY_BYTES); // anything - i.e. NOT THE CORRECT CHECK-ACCOUNT
         let mut lamports = 0;
         let mut data = vec![0; mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
         let owner = program_id;
 
         let check_account = AccountInfo::new(
-            &key,                             // account pubkey
-            false,                            // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            false,            // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
         let mut instruction_data: Vec<u8> = vec![0];
@@ -421,22 +410,22 @@ mod test {
         // vote for candidate 1 -- MUST FAIL, client supplied wrong check_account
 
         instruction_data[0] = 1;
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();  // <-- expect panic here
+        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
+        // <-- expect panic here
     }
 
     // must reject extra votes
 
     #[test]
-    #[should_panic] 
+    #[should_panic]
     fn test_nodup_vote1() {
+        // mock program id
 
-        // mock program id 
-
-        let program_id = Pubkey::new( PROGRAM_ACCOUNT_PUBKEY_BYTES );
+        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES);
 
         // mock contract data account
 
-        let key = Pubkey::new( DATA_ACCOUNT_PUBKEY_BYTES );  // anything
+        let key = Pubkey::new(DATA_ACCOUNT_PUBKEY_BYTES); // anything
         let mut lamports = 0;
         let mut data = vec![0; 2 * mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
@@ -444,51 +433,51 @@ mod test {
         let owner = program_id;
 
         let contract_data_account = AccountInfo::new(
-            &key,                             // account pubkey
-            false,                            // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            false,            // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
         // mock voter account
 
-        let key = Pubkey::new( VOTER_ACCOUNT_PUBKEY_BYTES );  // anything
+        let key = Pubkey::new(VOTER_ACCOUNT_PUBKEY_BYTES); // anything
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new( SYSTEM_ACCOUNT_PUBKEY_BYTES ); 
+        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
 
         let voter_account = AccountInfo::new(
-            &key,                             // account pubkey
-            true,                             // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            true,             // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
-        // mock voter check_account 
+        // mock voter check_account
 
-        let key = create_address_with_seed(voter_account.key, "checkvote", &program_id);  // derived (correctly)
+        let key = create_address_with_seed(voter_account.key, "checkvote", &program_id); // derived (correctly)
         let mut lamports = 0;
         let mut data = vec![0; mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
         let owner = program_id;
 
         let check_account = AccountInfo::new(
-            &key,                             // account pubkey
-            false,                            // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            false,            // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
         let mut instruction_data: Vec<u8> = vec![0];
@@ -508,20 +497,20 @@ mod test {
         // vote for candidate 2 -- MUST FAIL
 
         instruction_data[0] = 2;
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();  // <-- expect panic here
+        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
+        // <-- expect panic here
     }
 
     #[test]
-    #[should_panic] 
+    #[should_panic]
     fn test_nodup_vote2() {
+        // mock program id
 
-        // mock program id 
-
-        let program_id = Pubkey::new( PROGRAM_ACCOUNT_PUBKEY_BYTES );
+        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES);
 
         // mock contract data account
 
-        let key = Pubkey::new( DATA_ACCOUNT_PUBKEY_BYTES );  // anything
+        let key = Pubkey::new(DATA_ACCOUNT_PUBKEY_BYTES); // anything
         let mut lamports = 0;
         let mut data = vec![0; 2 * mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
@@ -529,51 +518,51 @@ mod test {
         let owner = program_id;
 
         let contract_data_account = AccountInfo::new(
-            &key,                             // account pubkey
-            false,                            // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            false,            // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
         // mock voter account
 
-        let key = Pubkey::new( VOTER_ACCOUNT_PUBKEY_BYTES );  // anything
+        let key = Pubkey::new(VOTER_ACCOUNT_PUBKEY_BYTES); // anything
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new( SYSTEM_ACCOUNT_PUBKEY_BYTES ); 
+        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
 
         let voter_account = AccountInfo::new(
-            &key,                             // account pubkey
-            true,                             // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            true,             // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
-        // mock voter check_account 
+        // mock voter check_account
 
-        let key = create_address_with_seed(voter_account.key, "checkvote", &program_id);  // derived (correctly)
+        let key = create_address_with_seed(voter_account.key, "checkvote", &program_id); // derived (correctly)
         let mut lamports = 0;
         let mut data = vec![0; mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
         let owner = program_id;
 
         let check_account = AccountInfo::new(
-            &key,                             // account pubkey
-            false,                            // is_signer
-            true,                             // is_writable
-            &mut lamports,                    // balance in lamports
-            &mut data,                        // storage
-            &owner,                           // owner pubkey
-            false,                            // is_executable
-            Epoch::default(),                 // rent_epoch
+            &key,             // account pubkey
+            false,            // is_signer
+            true,             // is_writable
+            &mut lamports,    // balance in lamports
+            &mut data,        // storage
+            &owner,           // owner pubkey
+            false,            // is_executable
+            Epoch::default(), // rent_epoch
         );
 
         let mut instruction_data: Vec<u8> = vec![0];
@@ -593,9 +582,9 @@ mod test {
         // vote for candidate 1 -- MUST FAIL
 
         instruction_data[0] = 1;
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();  // <-- expect panic here
+        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
+        // <-- expect panic here
     }
-
 }
 
 // Required to support info! in tests
