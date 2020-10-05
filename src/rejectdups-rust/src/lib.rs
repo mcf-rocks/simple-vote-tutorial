@@ -129,7 +129,6 @@ fn process_instruction(
     // Iterating accounts is safer then indexing
     let accounts_iter = &mut accounts.iter();
 
-    println!("SMITH 3");
     // Get the account that holds the vote count
     let count_account = next_account_info(accounts_iter)?;
 
@@ -138,7 +137,6 @@ fn process_instruction(
         info!("Vote count account not owned by program");
         return Err(VoteError::IncorrectOwner.into());
     }
-    println!("SMITH 4");
 
     // Get the account that checks for dups
     let check_account = next_account_info(accounts_iter)?;
@@ -148,24 +146,18 @@ fn process_instruction(
         info!("Check account not owned by program");
         return Err(VoteError::IncorrectOwner.into());
     }
-    println!("SMITH 5");
 
     // The account must be rent exempt, i.e. live forever
     let sysvar_account = next_account_info(accounts_iter)?;
-    println!("SMITH 50");
     let rent = <Rent as Sysvar>::from_account_info(sysvar_account)?;
-    println!("SMITH 5a");
     if !sysvar::rent::check_id(sysvar_account.key) {
         info!("Rent system account is not rent system account");
         return Err(ProgramError::InvalidAccountData);
     }
-    println!("SMITH 5b");
     if !rent.is_exempt(check_account.lamports(), check_account.data_len()) {
-        println!("SMITH 5b--");
         info!("Check account is not rent exempt");
         return Err(VoteError::AccountNotRentExempt.into());
     }
-    println!("SMITH 6");
 
     // the voter
     let voter_account = next_account_info(accounts_iter)?;
@@ -174,7 +166,6 @@ fn process_instruction(
         info!("Voter account is not signer");
         return Err(ProgramError::MissingRequiredSignature);
     }
-    println!("SMITH 7");
 
     let expected_check_account_pubkey =
         Pubkey::create_with_seed(voter_account.key, "checkvote", program_id)?;
@@ -183,7 +174,6 @@ fn process_instruction(
         info!("Voter fraud! not the correct check_account");
         return Err(VoteError::AccountNotCheckAccount.into());
     }
-    println!("SMITH 8");
 
     let mut check_data = check_account.try_borrow_mut_data()?;
 
