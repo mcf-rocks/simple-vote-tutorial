@@ -1,4 +1,5 @@
 use byteorder::{ByteOrder, LittleEndian};
+use num_derive::FromPrimitive;
 use solana_sdk::{
     account_info::next_account_info,
     account_info::AccountInfo,
@@ -12,8 +13,6 @@ use solana_sdk::{
     rent::Rent,
     sysvar::{self, Sysvar},
 };
-
-use num_derive::FromPrimitive;
 use thiserror::Error;
 
 #[derive(Clone, Debug, Eq, Error, FromPrimitive, PartialEq)]
@@ -52,14 +51,9 @@ impl Pack for Vote {
     const LEN: usize = 1;
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
-        if src.len() != 1 {
-            info!("Instruction data must be 1 byte");
-            return Err(ProgramError::InvalidInstructionData);
-        }
-
         let candidate = src[0];
 
-        if candidate != 1 || candidate != 2 {
+        if candidate != 1 && candidate != 2 {
             info!("Vote must be for candidate 1 or 2");
             return Err(VoteError::UnexpectedCandidate.into());
         }
@@ -135,6 +129,7 @@ fn process_instruction(
     // Iterating accounts is safer then indexing
     let accounts_iter = &mut accounts.iter();
 
+    println!("SMITH 3");
     // Get the account that holds the vote count
     let count_account = next_account_info(accounts_iter)?;
 
@@ -143,6 +138,7 @@ fn process_instruction(
         info!("Vote count account not owned by program");
         return Err(VoteError::IncorrectOwner.into());
     }
+    println!("SMITH 4");
 
     // Get the account that checks for dups
     let check_account = next_account_info(accounts_iter)?;
@@ -152,18 +148,24 @@ fn process_instruction(
         info!("Check account not owned by program");
         return Err(VoteError::IncorrectOwner.into());
     }
+    println!("SMITH 5");
 
     // The account must be rent exempt, i.e. live forever
     let sysvar_account = next_account_info(accounts_iter)?;
+    println!("SMITH 50");
     let rent = <Rent as Sysvar>::from_account_info(sysvar_account)?;
+    println!("SMITH 5a");
     if !sysvar::rent::check_id(sysvar_account.key) {
         info!("Rent system account is not rent system account");
         return Err(ProgramError::InvalidAccountData);
     }
+    println!("SMITH 5b");
     if !rent.is_exempt(check_account.lamports(), check_account.data_len()) {
+        println!("SMITH 5b--");
         info!("Check account is not rent exempt");
         return Err(VoteError::AccountNotRentExempt.into());
     }
+    println!("SMITH 6");
 
     // the voter
     let voter_account = next_account_info(accounts_iter)?;
@@ -172,14 +174,16 @@ fn process_instruction(
         info!("Voter account is not signer");
         return Err(ProgramError::MissingRequiredSignature);
     }
+    println!("SMITH 7");
 
-    let expected_check_account_address =
-        Pubkey::create_with_seed(voter_account.key, "checkvote", program_id);
+    let expected_check_account_pubkey =
+        Pubkey::create_with_seed(voter_account.key, "checkvote", program_id)?;
 
-    if expected_check_account_address != Ok(*check_account.key) {
-        info!("Voter fraud! not the correct check_account.");
+    if expected_check_account_pubkey != *check_account.key {
+        info!("Voter fraud! not the correct check_account");
         return Err(VoteError::AccountNotCheckAccount.into());
     }
+    println!("SMITH 8");
 
     let mut check_data = check_account.try_borrow_mut_data()?;
 
@@ -189,7 +193,7 @@ fn process_instruction(
         VoteCheck::unpack_unchecked(&check_data).expect("Failed to read VoteCheck");
 
     if vote_check.voted_for != 0 {
-        info!("Voter fraud! You already voted.");
+        info!("Voter fraud! You already voted");
         return Err(VoteError::AlreadyVoted.into());
     }
 
@@ -228,6 +232,7 @@ fn process_instruction(
 mod test {
     use super::*;
     use solana_sdk::clock::Epoch;
+    use std::mem;
 
     static SYSTEM_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -253,8 +258,6 @@ mod test {
         4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,
     ];
-
-    // single vote
 
     #[test]
     fn test_sanity() {
@@ -302,8 +305,8 @@ mod test {
 
         // mock voter check_account
 
-        let key = Pubkey::create_with_seed(voter_account.key, "checkvote", &program_id); // derived (correctly)
-        let mut lamports = 0;
+        let key = Pubkey::create_with_seed(voter_account.key, "checkvote", &program_id).unwrap(); // derived (correctly)
+        let mut lamports = 1000000; // must be rent exempt
         let mut data = vec![0; mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
         let owner = program_id;
@@ -319,9 +322,27 @@ mod test {
             Epoch::default(), // rent_epoch
         );
 
+        // mock rent account
+
+        let rent = Rent {
+            lamports_per_byte_year: 10,
+            exemption_threshold: 2.0,
+            burn_percent: 5,
+        };
+        let rent_account = rent.create_account(1);
+        let rent_pubkey = solana_sdk::sysvar::rent::id();
+        let mut rent_tuple = (rent_pubkey,rent_account);
+        let rent_info = AccountInfo::from(&mut rent_tuple);
+
+
         let mut instruction_data: Vec<u8> = vec![0];
 
-        let accounts = vec![contract_data_account, check_account, voter_account];
+        let accounts = vec![
+            contract_data_account,
+            check_account,
+            rent_info,
+            voter_account,
+        ];
 
         assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[0..4]), 0);
         assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 0);
@@ -463,7 +484,7 @@ mod test {
 
         // mock voter check_account
 
-        let key = create_address_with_seed(voter_account.key, "checkvote", &program_id); // derived (correctly)
+        let key = Pubkey::create_with_seed(voter_account.key, "checkvote", &program_id).unwrap(); // derived (correctly)
         let mut lamports = 0;
         let mut data = vec![0; mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
@@ -548,7 +569,7 @@ mod test {
 
         // mock voter check_account
 
-        let key = create_address_with_seed(voter_account.key, "checkvote", &program_id); // derived (correctly)
+        let key = Pubkey::create_with_seed(voter_account.key, "checkvote", &program_id).unwrap(); // derived (correctly)
         let mut lamports = 0;
         let mut data = vec![0; mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
