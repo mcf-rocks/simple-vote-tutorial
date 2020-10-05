@@ -457,7 +457,6 @@ mod test {
 
     #[test]
     fn test_sanity_both() {
-
         //++++++++++++++++++++++++++++++++++++
         // TEST: two voters, one each
         //++++++++++++++++++++++++++++++++++++
@@ -576,7 +575,6 @@ mod test {
 
         let mut instruction_data: Vec<u8> = vec![0];
 
-
         let accounts1 = vec![
             count_account_info,
             first_check_account_info,
@@ -609,8 +607,6 @@ mod test {
 
         assert_eq!(LittleEndian::read_u32(&accounts2[0].data.borrow()[0..4]), 1);
         assert_eq!(LittleEndian::read_u32(&accounts2[0].data.borrow()[4..8]), 1);
-
-
     }
 
     #[test]
