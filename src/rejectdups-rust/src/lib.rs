@@ -149,7 +149,7 @@ fn process_instruction(
 
     // The account must be rent exempt, i.e. live forever
     let sysvar_account = next_account_info(accounts_iter)?;
-    let rent = <Rent as Sysvar>::from_account_info(sysvar_account)?;
+    let rent = &Rent::from_account_info(sysvar_account)?;
     if !sysvar::rent::check_id(sysvar_account.key) {
         info!("Rent system account is not rent system account");
         return Err(ProgramError::InvalidAccountData);
@@ -221,8 +221,11 @@ fn process_instruction(
 #[cfg(test)]
 mod test {
     use super::*;
-    use solana_sdk::clock::Epoch;
     use std::mem;
+    use solana_sdk::{
+        clock::Epoch,
+        pubkey::Pubkey,
+    };
 
     static SYSTEM_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -262,7 +265,7 @@ mod test {
 
         // mock program id
 
-        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES); // anything
+        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES); // anything // Pubkey::new_rand() <- don't work
 
         // mock contract data account
 

@@ -20,6 +20,9 @@ num-traits = "0.2"
 num-derive = "0.3"
 thiserror = "1.0"
 
+[dev-dependencies]
+rand = { version = "0.7.0"}
+
 [lib]
 name = "solana_bpf_rejectdups"
 crate-type = ["cdylib", "lib"]
