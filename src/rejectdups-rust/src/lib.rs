@@ -217,7 +217,10 @@ fn process_instruction(
     Ok(())
 }
 
-// tests
+// Required to support info! in tests
+#[cfg(not(target_arch = "bpf"))]
+solana_sdk::program_stubs!();
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -227,35 +230,18 @@ mod test {
         pubkey::Pubkey,
     };
 
-    static SYSTEM_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0,
-    ];
+    fn pubkey_rand() -> Pubkey {
+        Pubkey::new(&rand::random::<[u8; 32]>())
+    }
 
-    static PROGRAM_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0,
-    ];
+    fn pubkey_sys() -> Pubkey {
+        let system_account_bytes: &[u8] = &[
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0,
+        ];
+        Pubkey::new(system_account_bytes)
+    }
 
-    static DATA_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
-        2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0,
-    ];
-
-    static VOTER_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
-        3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0,
-    ];
-
-    static SECOND_VOTER_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
-        4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0,
-    ];
-
-    static FALSE_CHECK_ACCOUNT_PUBKEY_BYTES: &[u8] = &[
-        5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0,
-    ];
 
     #[test]
     fn test_sanity1() {
@@ -265,11 +251,11 @@ mod test {
 
         // mock program id
 
-        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES); // anything // Pubkey::new_rand() <- don't work
+        let program_id = pubkey_rand(); // anything
 
         // mock contract data account
 
-        let key = Pubkey::new(DATA_ACCOUNT_PUBKEY_BYTES); // anything
+        let key = pubkey_rand(); // anything
         let mut lamports = 0;
         let mut data = vec![0; 2 * mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
@@ -289,10 +275,10 @@ mod test {
 
         // mock voter account
 
-        let key = Pubkey::new(VOTER_ACCOUNT_PUBKEY_BYTES); // anything
+        let key = pubkey_rand(); // anything
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
+        let owner = pubkey_sys();
 
         let voter_account_info = AccountInfo::new(
             &key,             // account pubkey
@@ -366,11 +352,11 @@ mod test {
 
         // mock program id
 
-        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES);
+        let program_id = pubkey_rand();
 
         // mock contract data account
 
-        let key = Pubkey::new(DATA_ACCOUNT_PUBKEY_BYTES);
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 2 * mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0);
@@ -390,10 +376,10 @@ mod test {
 
         // mock voter account
 
-        let key = Pubkey::new(VOTER_ACCOUNT_PUBKEY_BYTES);
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
+        let owner = pubkey_sys();
 
         let voter_account_info = AccountInfo::new(
             &key,             // account pubkey
@@ -466,11 +452,11 @@ mod test {
 
         // mock program id
 
-        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES);
+        let program_id = pubkey_rand();
 
         // mock contract data account
 
-        let key = Pubkey::new(DATA_ACCOUNT_PUBKEY_BYTES);
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 2 * mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0);
@@ -490,10 +476,10 @@ mod test {
 
         // first mock voter account
 
-        let key = Pubkey::new(VOTER_ACCOUNT_PUBKEY_BYTES);
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
+        let owner = pubkey_sys();
 
         let first_voter_account_info = AccountInfo::new(
             &key,             // account pubkey
@@ -508,10 +494,10 @@ mod test {
 
         // second mock voter account
 
-        let key = Pubkey::new(SECOND_VOTER_ACCOUNT_PUBKEY_BYTES);
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
+        let owner = pubkey_sys();
 
         let second_voter_account_info = AccountInfo::new(
             &key,             // account pubkey
@@ -619,9 +605,13 @@ mod test {
         // TEST MUST FAIL: insufficient rent on check account
         //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES);
+        // mock program id
 
-        let key = Pubkey::new(DATA_ACCOUNT_PUBKEY_BYTES);
+        let program_id = pubkey_rand();
+
+        // mock contract data account
+
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 2 * mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0);
@@ -641,10 +631,10 @@ mod test {
 
         // mock voter account
 
-        let key = Pubkey::new(VOTER_ACCOUNT_PUBKEY_BYTES);
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
+        let owner = pubkey_sys();
 
         let voter_account_info = AccountInfo::new(
             &key,             // account pubkey
@@ -717,9 +707,13 @@ mod test {
         // TEST MUST FAIL: where client passes in wrong checking account
         //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES);
+        // mock program id
 
-        let key = Pubkey::new(DATA_ACCOUNT_PUBKEY_BYTES);
+        let program_id = pubkey_rand();
+
+        // mock program data account
+
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 2 * mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0);
@@ -739,10 +733,10 @@ mod test {
 
         // mock voter account
 
-        let key = Pubkey::new(VOTER_ACCOUNT_PUBKEY_BYTES);
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
+        let owner = pubkey_sys();
 
         let voter_account_info = AccountInfo::new(
             &key,             // account pubkey
@@ -757,7 +751,7 @@ mod test {
 
         // mock voter check_account_info
 
-        let key = Pubkey::new(FALSE_CHECK_ACCOUNT_PUBKEY_BYTES); // NOT THE CORRECT CHECK-ACCOUNT
+        let key = pubkey_rand(); // NOT THE CORRECT CHECK-ACCOUNT, WHICH SHOULD BE DETERMINISTICALLY DERIVED
         let mut lamports = 0;
         let mut data = vec![0; mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0);
@@ -795,11 +789,13 @@ mod test {
         // TEST MUST FAIL: reject a duplicate vote
         //++++++++++++++++++++++++++++++++++++++++++
 
-        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES);
+        // mock program account
+
+        let program_id = pubkey_rand();
 
         // mock contract data account
 
-        let key = Pubkey::new(DATA_ACCOUNT_PUBKEY_BYTES);
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 2 * mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0);
@@ -819,10 +815,10 @@ mod test {
 
         // mock voter account
 
-        let key = Pubkey::new(VOTER_ACCOUNT_PUBKEY_BYTES);
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
+        let owner = pubkey_sys();
 
         let voter_account_info = AccountInfo::new(
             &key,             // account pubkey
@@ -883,11 +879,13 @@ mod test {
         // TEST MUST FAIL: reject a duplicate vote (other way round)
         //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-        let program_id = Pubkey::new(PROGRAM_ACCOUNT_PUBKEY_BYTES);
+        // mock program account
+
+        let program_id = pubkey_rand();
 
         // mock contract data account
 
-        let key = Pubkey::new(DATA_ACCOUNT_PUBKEY_BYTES);
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 2 * mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0);
@@ -907,10 +905,10 @@ mod test {
 
         // mock voter account
 
-        let key = Pubkey::new(VOTER_ACCOUNT_PUBKEY_BYTES);
+        let key = pubkey_rand();
         let mut lamports = 0;
         let mut data = vec![0; 0];
-        let owner = Pubkey::new(SYSTEM_ACCOUNT_PUBKEY_BYTES);
+        let owner = pubkey_sys();
 
         let voter_account_info = AccountInfo::new(
             &key,             // account pubkey
@@ -965,6 +963,3 @@ mod test {
     }
 }
 
-// Required to support info! in tests
-#[cfg(not(target_arch = "bpf"))]
-solana_sdk::program_stubs!();
