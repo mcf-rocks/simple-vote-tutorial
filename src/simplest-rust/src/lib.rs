@@ -33,6 +33,7 @@ fn process_instruction(
     // program we will use solana_sdk::program_pack::Pack
     // to retrieve and deserialise the account data
     // and to check it is the correct length
+    // for now, realise it's literally just 8 bytes of data.
 
     if account.try_data_len()? < 2 * mem::size_of::<u32>() {
         info!("Vote account data length too small for u32");
