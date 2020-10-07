@@ -224,11 +224,8 @@ solana_sdk::program_stubs!();
 #[cfg(test)]
 mod test {
     use super::*;
+    use solana_sdk::{clock::Epoch, pubkey::Pubkey};
     use std::mem;
-    use solana_sdk::{
-        clock::Epoch,
-        pubkey::Pubkey,
-    };
 
     fn pubkey_rand() -> Pubkey {
         Pubkey::new(&rand::random::<[u8; 32]>())
@@ -236,12 +233,11 @@ mod test {
 
     fn pubkey_sys() -> Pubkey {
         let system_account_bytes: &[u8] = &[
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
         ];
         Pubkey::new(system_account_bytes)
     }
-
 
     #[test]
     fn test_sanity1() {
@@ -962,4 +958,3 @@ mod test {
         // <-- expect panic here
     }
 }
-
