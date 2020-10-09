@@ -84,7 +84,7 @@ async function main() {
     newAccountPubkey,
   }
 
-  let createTransaction = SystemProgram.createAccountWithSeed( params )
+  let createTransaction = new Transaction().add( SystemProgram.createAccountWithSeed( params ) )
 
   await sendAndConfirmTransaction(
     'createAccountWithSeed',
