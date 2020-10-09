@@ -31,6 +31,8 @@ export async function loadProgram(connection, payerAccount, pathToProgram) {
 
   const programAccount = new Account()
 
+  console.log("ProgramAccount:",programAccount.publicKey.toString())
+
   await BpfLoader.load(connection, payerAccount, programAccount, data, BPF_LOADER_DEPRECATED_PROGRAM_ID)
   //await BpfLoader.load(connection, payerAccount, programAccount, data, BPF_LOADER_PROGRAM_ID)
 
