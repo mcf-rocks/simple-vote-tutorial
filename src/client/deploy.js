@@ -3,6 +3,7 @@ import {
     BPF_LOADER_DEPRECATED_PROGRAM_ID,
     BPF_LOADER_PROGRAM_ID,
     SystemProgram,
+    Transaction,
     Account,
     BpfLoader,
 } from '@solana/web3.js'
@@ -30,8 +31,8 @@ export async function loadProgram(connection, payerAccount, pathToProgram) {
 
   const programAccount = new Account()
 
-  //await BpfLoader.load(connection, payerAccount, programAccount, data, BPF_LOADER_DEPRECATED_PROGRAM_ID)
-  await BpfLoader.load(connection, payerAccount, programAccount, data, BPF_LOADER_PROGRAM_ID)
+  await BpfLoader.load(connection, payerAccount, programAccount, data, BPF_LOADER_DEPRECATED_PROGRAM_ID)
+  //await BpfLoader.load(connection, payerAccount, programAccount, data, BPF_LOADER_PROGRAM_ID)
 
   return programAccount.publicKey
 }
@@ -49,18 +50,20 @@ export async function makeAccount(connection, payerAccount, numBytes, programId)
 
   const rentExemption = await connection.getMinimumBalanceForRentExemption(numBytes);
 
-  const createTransaction = SystemProgram.createAccount({
-    fromPubkey: payerAccount.publicKey,
-    newAccountPubkey: dataAccount.publicKey,
-    lamports: rentExemption,
-    space: numBytes,
-    programId: programId,
-  })
-	
+  const transaction = new Transaction().add(
+    SystemProgram.createAccount({
+      fromPubkey: payerAccount.publicKey,
+      newAccountPubkey: dataAccount.publicKey,
+      lamports: rentExemption,
+      space: numBytes,
+      programId: programId,
+    }),
+  )
+
   await sendAndConfirmTransaction(
     'createAccount',
     connection,
-    createTransaction,
+    transaction,
     payerAccount,
     dataAccount,
   )
