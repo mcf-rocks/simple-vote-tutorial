@@ -7,7 +7,7 @@ import {sleep} from './sleep';
 export async function airDrop(
   account: Account,
   connection: Connection,
-  lamports: number = 100000000000,
+  lamports: number = 10000000000,  // devnet limited to 10 Sol atm
 ): Promise<Account> {
 
   const initial = await connection.getBalance(account.publicKey)
