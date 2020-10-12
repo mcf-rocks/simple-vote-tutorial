@@ -4,8 +4,10 @@ use solana_sdk::{
     account_info::next_account_info,
     account_info::AccountInfo,
     decode_error::DecodeError,
-    entrypoint,
-    entrypoint::ProgramResult,
+    //entrypoint,
+    //entrypoint::ProgramResult,
+    entrypoint_deprecated,
+    entrypoint_deprecated::ProgramResult,
     info,
     program_error::ProgramError,
     program_pack::{Pack, Sealed},
@@ -113,7 +115,7 @@ impl Pack for VoteCount {
 }
 
 // Declare and export the program's entrypoint
-entrypoint!(process_instruction);
+entrypoint_deprecated!(process_instruction);
 
 // Program entrypoint's implementation
 fn process_instruction(
