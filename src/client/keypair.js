@@ -19,8 +19,8 @@ async function main() {
   
   const wallet = new Account()
 
-  const sk = wallet.secretKey.slice(0,33)
-  const pk = wallet.secretKey.slice(33)
+  const sk = wallet.secretKey.slice(0,32)
+  const pk = wallet.secretKey.slice(32)
   const hex = wallet.publicKey._bn
   const address = wallet.publicKey.toBase58()
 
