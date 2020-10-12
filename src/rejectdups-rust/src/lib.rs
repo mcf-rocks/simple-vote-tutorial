@@ -68,17 +68,17 @@ impl Pack for Vote {
 // Vote Check structure, which is one 4 byte u32 number
 // contains zero if they havn't voted, or the candidate number if they have
 
-pub struct VoteCheck {
+pub struct VoterCheck {
     pub voted_for: u32,
 }
 
-impl Sealed for VoteCheck {}
+impl Sealed for VoterCheck {}
 
-impl Pack for VoteCheck {
+impl Pack for VoterCheck {
     const LEN: usize = 4;
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
-        Ok(VoteCheck {
+        Ok(VoterCheck {
             voted_for: LittleEndian::read_u32(&src[0..4]),
         })
     }
@@ -125,7 +125,7 @@ fn process_instruction(
 ) -> ProgramResult {
     info!("Rust program entrypoint");
 
-    // get candidate to vote for from instruction_data
+    // get candidate to vote for from instruction_data (unchecked because data is not null)
     let candidate = Vote::unpack_unchecked(&instruction_data)?.candidate;
 
     // Iterating accounts is safer then indexing
@@ -182,7 +182,7 @@ fn process_instruction(
     // this unpack reads and deserialises the account data and also checks the data is the correct length
 
     let mut vote_check =
-        VoteCheck::unpack_unchecked(&check_data).expect("Failed to read VoteCheck");
+        VoterCheck::unpack_unchecked(&check_data).expect("Failed to read VoterCheck");
 
     if vote_check.voted_for != 0 {
         info!("Voter fraud! You already voted");
@@ -214,7 +214,7 @@ fn process_instruction(
     }
 
     VoteCount::pack(vote_count, &mut count_data).expect("Failed to write VoteCount");
-    VoteCheck::pack(vote_check, &mut check_data).expect("Failed to write VoteCheck");
+    VoterCheck::pack(vote_check, &mut check_data).expect("Failed to write VoterCheck");
 
     Ok(())
 }
