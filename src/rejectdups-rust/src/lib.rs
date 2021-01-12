@@ -1,14 +1,12 @@
 use byteorder::{ByteOrder, LittleEndian};
 use num_derive::FromPrimitive;
-use solana_sdk::{
+use solana_program::{
     account_info::next_account_info,
     account_info::AccountInfo,
     decode_error::DecodeError,
-    //entrypoint,
-    //entrypoint::ProgramResult,
-    entrypoint_deprecated,
-    entrypoint_deprecated::ProgramResult,
-    info,
+    entrypoint,
+    entrypoint::ProgramResult,
+    msg,
     program_error::ProgramError,
     program_pack::{Pack, Sealed},
     pubkey::Pubkey,
@@ -56,7 +54,7 @@ impl Pack for Vote {
         let candidate = src[0];
 
         if candidate != 1 && candidate != 2 {
-            info!("Vote must be for candidate 1 or 2");
+            msg!("Vote must be for candidate 1 or 2");
             return Err(VoteError::UnexpectedCandidate.into());
         }
         Ok(Vote { candidate })
@@ -66,7 +64,7 @@ impl Pack for Vote {
 }
 
 // Vote Check structure, which is one 4 byte u32 number
-// contains zero if they havn't voted, or the candidate number if they have
+// contains zero if they havn't voted, or the candidatIsInitializede number if they have
 
 pub struct VoterCheck {
     pub voted_for: u32,
@@ -115,7 +113,7 @@ impl Pack for VoteCount {
 }
 
 // Declare and export the program's entrypoint
-entrypoint_deprecated!(process_instruction);
+entrypoint!(process_instruction);
 
 // Program entrypoint's implementation
 fn process_instruction(
@@ -123,7 +121,7 @@ fn process_instruction(
     accounts: &[AccountInfo], // data accounts
     instruction_data: &[u8],  // 1 = vote for A, 2 = vote for B
 ) -> ProgramResult {
-    info!("Rust program entrypoint");
+    msg!("Rust program entrypoint");
 
     // get candidate to vote for from instruction_data (unchecked because data is not null)
     let candidate = Vote::unpack_unchecked(&instruction_data)?.candidate;
@@ -136,7 +134,12 @@ fn process_instruction(
 
     // The account must be owned by the program in order to modify its data
     if count_account.owner != program_id {
-        info!("Vote count account not owned by program");
+        msg!(
+            "Vote count account ({}) not owned by program, actual: {}, expected: {}",
+            count_account.key,
+            count_account.owner,
+            program_id
+        );
         return Err(VoteError::IncorrectOwner.into());
     }
 
@@ -145,7 +148,7 @@ fn process_instruction(
 
     // The check account must be owned by the program in order to modify its data
     if check_account.owner != program_id {
-        info!("Check account not owned by program");
+        msg!("Check account not owned by program");
         return Err(VoteError::IncorrectOwner.into());
     }
 
@@ -153,11 +156,11 @@ fn process_instruction(
     let sysvar_account = next_account_info(accounts_iter)?;
     let rent = &Rent::from_account_info(sysvar_account)?;
     if !sysvar::rent::check_id(sysvar_account.key) {
-        info!("Rent system account is not rent system account");
+        msg!("Rent system account is not rent system account");
         return Err(ProgramError::InvalidAccountData);
     }
     if !rent.is_exempt(check_account.lamports(), check_account.data_len()) {
-        info!("Check account is not rent exempt");
+        msg!("Check account is not rent exempt");
         return Err(VoteError::AccountNotRentExempt.into());
     }
 
@@ -165,7 +168,7 @@ fn process_instruction(
     let voter_account = next_account_info(accounts_iter)?;
 
     if !voter_account.is_signer {
-        info!("Voter account is not signer");
+        msg!("Voter account is not signer");
         return Err(ProgramError::MissingRequiredSignature);
     }
 
@@ -173,7 +176,7 @@ fn process_instruction(
         Pubkey::create_with_seed(voter_account.key, "checkvote", program_id)?;
 
     if expected_check_account_pubkey != *check_account.key {
-        info!("Voter fraud! not the correct check_account");
+        msg!("Voter fraud! not the correct check_account");
         return Err(VoteError::AccountNotCheckAccount.into());
     }
 
@@ -185,7 +188,7 @@ fn process_instruction(
         VoterCheck::unpack_unchecked(&check_data).expect("Failed to read VoterCheck");
 
     if vote_check.voted_for != 0 {
-        info!("Voter fraud! You already voted");
+        msg!("Voter fraud! You already voted");
         return Err(VoteError::AlreadyVoted.into());
     }
 
@@ -200,15 +203,15 @@ fn process_instruction(
         1 => {
             vote_count.candidate1 += 1;
             vote_check.voted_for = 1;
-            info!("Voting for candidate1!");
+            msg!("Voting for candidate1!");
         }
         2 => {
             vote_count.candidate2 += 1;
             vote_check.voted_for = 2;
-            info!("Voting for candidate2!");
+            msg!("Voting for candidate2!");
         }
         _ => {
-            info!("Unknown candidate");
+            msg!("Unknown candidate");
             return Err(ProgramError::InvalidInstructionData);
         }
     }
@@ -218,745 +221,639 @@ fn process_instruction(
 
     Ok(())
 }
-
-// Required to support info! in tests
-#[cfg(not(target_arch = "bpf"))]
-solana_sdk::program_stubs!();
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use solana_sdk::{clock::Epoch, pubkey::Pubkey};
+    use assert_matches::*;
+    use solana_program::instruction::InstructionError::Custom;
+    use solana_program::{
+        instruction::{AccountMeta, Instruction},
+        pubkey::Pubkey,
+        sysvar,
+    };
+    use solana_program_test::*;
+    use solana_sdk::transaction::TransactionError;
+    use solana_sdk::{
+        account::Account,
+        signature::{Keypair, Signer},
+        transaction::Transaction,
+    };
     use std::mem;
 
-    fn pubkey_rand() -> Pubkey {
-        Pubkey::new(&rand::random::<[u8; 32]>())
+    impl From<VoteError> for TransactionError {
+        fn from(e: VoteError) -> Self {
+            TransactionError::InstructionError(0, Custom(e as u32))
+        }
     }
 
-    fn pubkey_sys() -> Pubkey {
-        let system_account_bytes: &[u8] = &[
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0,
-        ];
-        Pubkey::new(system_account_bytes)
-    }
-
-    #[test]
-    fn test_sanity1() {
+    #[tokio::test]
+    async fn test_sanity1() {
         //++++++++++++++++++++++++++++++++++++
         // TEST: Simply vote for candidate 1
         //++++++++++++++++++++++++++++++++++++
 
-        // mock program id
+        let program_id = Pubkey::new_unique();
 
-        let program_id = pubkey_rand(); // anything
+        let mut program_test =
+            ProgramTest::new("vote_counter", program_id, processor!(process_instruction));
 
         // mock contract data account
-
-        let key = pubkey_rand(); // anything
-        let mut lamports = 0;
-        let mut data = vec![0; 2 * mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
-        LittleEndian::write_u32(&mut data[4..8], 0);
-        let owner = program_id;
-
-        let count_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
+        let count_key = Pubkey::new_unique();
+        let data: Vec<u8> = vec![0; 2 * mem::size_of::<u32>()];
+        program_test.add_account(
+            count_key,
+            Account {
+                lamports: 60000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
         );
 
-        // mock voter account
-
-        let key = pubkey_rand(); // anything
-        let mut lamports = 0;
-        let mut data = vec![0; 0];
-        let owner = pubkey_sys();
-
-        let voter_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            true,             // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
+        // voter account
+        let voter_keypair = Keypair::new();
+        let voter_key = voter_keypair.pubkey();
 
         // mock voter check_account_info
-
-        let key =
-            Pubkey::create_with_seed(voter_account_info.key, "checkvote", &program_id).unwrap(); // derived (correctly)
-        let mut lamports = 1000000; // must be rent exempt
+        let check_key = Pubkey::create_with_seed(&voter_key, "checkvote", &program_id).unwrap(); // derived (correctly)
         let mut data = vec![0; mem::size_of::<u32>()];
         LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
-        let owner = program_id;
-
-        let check_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
+        program_test.add_account(
+            check_key,
+            Account {
+                lamports: 1000000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
         );
 
-        // mock rent account
+        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
-        let rent = Rent {
-            lamports_per_byte_year: 10,
-            exemption_threshold: 2.0,
-            burn_percent: 5,
-        };
-        let rent_account = rent.create_account(1);
-        let rent_pubkey = solana_sdk::sysvar::rent::id();
-        let mut rent_tuple = (rent_pubkey, rent_account);
-        let rent_info = AccountInfo::from(&mut rent_tuple);
-
-        let mut instruction_data: Vec<u8> = vec![0];
-
-        let accounts = vec![
-            count_account_info,
-            check_account_info,
-            rent_info,
-            voter_account_info,
-        ];
-
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[0..4]), 0);
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 0);
+        let count_account = banks_client.get_account(count_key).await.unwrap().unwrap();
+        let vote_count =
+            VoteCount::unpack_unchecked(&count_account.data).expect("Failed to read VoteCount");
+        assert_eq!(vote_count.candidate1, 0);
+        assert_eq!(vote_count.candidate2, 0);
 
         // vote for candidate 1
+        let accounts = vec![
+            AccountMeta::new(count_key, false),
+            AccountMeta::new(check_key, false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new(voter_key, true),
+        ];
 
-        instruction_data[0] = 1;
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction {
+                program_id,
+                accounts,
+                data: vec![1],
+            }],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[&payer, &voter_keypair], recent_blockhash);
 
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[0..4]), 1);
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 0);
+        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+        let count_account = banks_client.get_account(count_key).await.unwrap().unwrap();
+        let vote_count =
+            VoteCount::unpack_unchecked(&count_account.data).expect("Failed to read VoteCount");
+        assert_eq!(vote_count.candidate1, 1);
+        assert_eq!(vote_count.candidate2, 0);
     }
 
-    #[test]
-    fn test_sanity2() {
+    #[tokio::test]
+    async fn test_sanity2() {
         //++++++++++++++++++++++++++++++++++++
         // TEST: Simply vote for candidate 2
         //++++++++++++++++++++++++++++++++++++
 
-        // mock program id
+        let program_id = Pubkey::new_unique();
 
-        let program_id = pubkey_rand();
+        let mut program_test =
+            ProgramTest::new("vote_counter", program_id, processor!(process_instruction));
 
         // mock contract data account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 2 * mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        LittleEndian::write_u32(&mut data[4..8], 0);
-        let owner = program_id;
-
-        let count_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
+        let count_key = Pubkey::new_unique();
+        let data: Vec<u8> = vec![0; 2 * mem::size_of::<u32>()];
+        program_test.add_account(
+            count_key,
+            Account {
+                lamports: 60000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
         );
 
-        // mock voter account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 0];
-        let owner = pubkey_sys();
-
-        let voter_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            true,             // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
+        // voter account
+        let voter_keypair = Keypair::new();
+        let voter_key = voter_keypair.pubkey();
 
         // mock voter check_account_info
-
-        let key =
-            Pubkey::create_with_seed(voter_account_info.key, "checkvote", &program_id).unwrap(); // derived (correctly)
-        let mut lamports = 1000000; // must be rent exempt
+        let check_key = Pubkey::create_with_seed(&voter_key, "checkvote", &program_id).unwrap(); // derived (correctly)
         let mut data = vec![0; mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        let owner = program_id;
-
-        let check_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
+        LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
+        program_test.add_account(
+            check_key,
+            Account {
+                lamports: 1000000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
         );
 
-        // mock rent account
+        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
-        let rent = Rent {
-            lamports_per_byte_year: 10,
-            exemption_threshold: 2.0,
-            burn_percent: 5,
-        };
-        let rent_account = rent.create_account(1);
-        let rent_pubkey = solana_sdk::sysvar::rent::id();
-        let mut rent_tuple = (rent_pubkey, rent_account);
-        let rent_info = AccountInfo::from(&mut rent_tuple);
+        let count_account = banks_client.get_account(count_key).await.unwrap().unwrap();
+        let vote_count =
+            VoteCount::unpack_unchecked(&count_account.data).expect("Failed to read VoteCount");
+        assert_eq!(vote_count.candidate1, 0);
+        assert_eq!(vote_count.candidate2, 0);
 
-        let mut instruction_data: Vec<u8> = vec![0];
-
+        // vote for candidate 1
         let accounts = vec![
-            count_account_info,
-            check_account_info,
-            rent_info,
-            voter_account_info,
+            AccountMeta::new(count_key, false),
+            AccountMeta::new(check_key, false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new(voter_key, true),
         ];
 
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[0..4]), 0);
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 0);
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction {
+                program_id,
+                accounts,
+                data: vec![2],
+            }],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[&payer, &voter_keypair], recent_blockhash);
 
-        // vote for candidate 2
-
-        instruction_data[0] = 2;
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[0..4]), 0);
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 1);
+        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+        let count_account = banks_client.get_account(count_key).await.unwrap().unwrap();
+        let vote_count =
+            VoteCount::unpack_unchecked(&count_account.data).expect("Failed to read VoteCount");
+        assert_eq!(vote_count.candidate1, 0);
+        assert_eq!(vote_count.candidate2, 1);
     }
 
-    #[test]
-    fn test_sanity_both() {
+    #[tokio::test]
+    async fn test_sanity_both() {
         //++++++++++++++++++++++++++++++++++++
         // TEST: two voters, one each
         //++++++++++++++++++++++++++++++++++++
 
-        // mock program id
+        let program_id = Pubkey::new_unique();
 
-        let program_id = pubkey_rand();
-
-        // mock contract data account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 2 * mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        LittleEndian::write_u32(&mut data[4..8], 0);
-        let owner = program_id;
-
-        let count_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
-
-        // first mock voter account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 0];
-        let owner = pubkey_sys();
-
-        let first_voter_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            true,             // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
-
-        // second mock voter account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 0];
-        let owner = pubkey_sys();
-
-        let second_voter_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            true,             // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
-
-        // first mock voter check_account_info
-
-        let key = Pubkey::create_with_seed(first_voter_account_info.key, "checkvote", &program_id)
-            .unwrap(); // derived (correctly)
-        let mut lamports = 1000000; // must be rent exempt
-        let mut data = vec![0; mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        let owner = program_id;
-
-        let first_check_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
-
-        // second mock voter check_account_info
-
-        let key = Pubkey::create_with_seed(second_voter_account_info.key, "checkvote", &program_id)
-            .unwrap(); // derived (correctly)
-        let mut lamports = 1000000; // must be rent exempt
-        let mut data = vec![0; mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        let owner = program_id;
-
-        let second_check_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
-
-        // mock rent account
-
-        let rent = Rent {
-            lamports_per_byte_year: 10,
-            exemption_threshold: 2.0,
-            burn_percent: 5,
-        };
-        let rent_account = rent.create_account(1);
-        let rent_pubkey = solana_sdk::sysvar::rent::id();
-        let mut rent_tuple = (rent_pubkey, rent_account);
-        let rent_info = AccountInfo::from(&mut rent_tuple);
-
-        let mut instruction_data: Vec<u8> = vec![0];
-
-        let accounts1 = vec![
-            count_account_info,
-            first_check_account_info,
-            rent_info.clone(),
-            first_voter_account_info,
-        ];
-
-        assert_eq!(LittleEndian::read_u32(&accounts1[0].data.borrow()[0..4]), 0);
-        assert_eq!(LittleEndian::read_u32(&accounts1[0].data.borrow()[4..8]), 0);
-
-        // first voter votes for candidate 1
-
-        instruction_data[0] = 1;
-        process_instruction(&program_id, &accounts1, &instruction_data).unwrap();
-
-        assert_eq!(LittleEndian::read_u32(&accounts1[0].data.borrow()[0..4]), 1);
-        assert_eq!(LittleEndian::read_u32(&accounts1[0].data.borrow()[4..8]), 0);
-
-        // second voter votes for candidate 2
-
-        let accounts2 = vec![
-            accounts1[0].clone(),
-            second_check_account_info,
-            rent_info.clone(),
-            second_voter_account_info,
-        ];
-
-        instruction_data[0] = 2;
-        process_instruction(&program_id, &accounts2, &instruction_data).unwrap();
-
-        assert_eq!(LittleEndian::read_u32(&accounts2[0].data.borrow()[0..4]), 1);
-        assert_eq!(LittleEndian::read_u32(&accounts2[0].data.borrow()[4..8]), 1);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_rent() {
-        //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-        // TEST MUST FAIL: insufficient rent on check account
-        //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-        // mock program id
-
-        let program_id = pubkey_rand();
+        let mut program_test =
+            ProgramTest::new("vote_counter", program_id, processor!(process_instruction));
 
         // mock contract data account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 2 * mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        LittleEndian::write_u32(&mut data[4..8], 0);
-        let owner = program_id;
-
-        let count_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
+        let count_key = Pubkey::new_unique();
+        let data: Vec<u8> = vec![0; 2 * mem::size_of::<u32>()];
+        program_test.add_account(
+            count_key,
+            Account {
+                lamports: 60000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
         );
 
-        // mock voter account
+        // voter 1 account
+        let voter1_keypair = Keypair::new();
+        let voter1_key = voter1_keypair.pubkey();
 
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 0];
-        let owner = pubkey_sys();
-
-        let voter_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            true,             // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
-
-        // mock voter check_account_info
-
-        let key =
-            Pubkey::create_with_seed(voter_account_info.key, "checkvote", &program_id).unwrap(); // derived (correctly)
-
-        let mut lamports = 0; // NOT RENT EXEMPT
-
+        // mock voter 1 check_account_info
+        let check1_key = Pubkey::create_with_seed(&voter1_key, "checkvote", &program_id).unwrap(); // derived (correctly)
         let mut data = vec![0; mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        let owner = program_id;
-
-        let check_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
+        LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
+        program_test.add_account(
+            check1_key,
+            Account {
+                lamports: 1000000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
         );
 
-        // mock rent account
+        // voter 2 account
+        let voter2_keypair = Keypair::new();
+        let voter2_key = voter2_keypair.pubkey();
 
-        let rent = Rent {
-            lamports_per_byte_year: 10,
-            exemption_threshold: 2.0,
-            burn_percent: 5,
-        };
-        let rent_account = rent.create_account(1);
-        let rent_pubkey = solana_sdk::sysvar::rent::id();
-        let mut rent_tuple = (rent_pubkey, rent_account);
-        let rent_info = AccountInfo::from(&mut rent_tuple);
+        // mock voter 2 check_account_info
+        let check2_key = Pubkey::create_with_seed(&voter2_key, "checkvote", &program_id).unwrap(); // derived (correctly)
+        let mut data = vec![0; mem::size_of::<u32>()];
+        LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
+        program_test.add_account(
+            check2_key,
+            Account {
+                lamports: 1000000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
 
-        let mut instruction_data: Vec<u8> = vec![0];
+        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
+        // account 1 votes for candidate 1
         let accounts = vec![
-            count_account_info,
-            check_account_info,
-            rent_info,
-            voter_account_info,
+            AccountMeta::new(count_key, false),
+            AccountMeta::new(check1_key, false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new(voter1_key, true),
         ];
 
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[0..4]), 0);
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 0);
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction {
+                program_id,
+                accounts,
+                data: vec![1],
+            }],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[&payer, &voter1_keypair], recent_blockhash);
 
-        // vote for candidate 2
+        // account 2 votes for candidate 2
+        let accounts = vec![
+            AccountMeta::new(count_key, false),
+            AccountMeta::new(check2_key, false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new(voter2_key, true),
+        ];
 
-        instruction_data[0] = 2;
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
-        // <-- expect panic here
+        let mut transaction2 = Transaction::new_with_payer(
+            &[Instruction {
+                program_id,
+                accounts,
+                data: vec![2],
+            }],
+            Some(&payer.pubkey()),
+        );
+        transaction2.sign(&[&payer, &voter2_keypair], recent_blockhash);
+
+        assert_matches!(
+            banks_client
+                .process_transactions([transaction, transaction2].to_vec())
+                .await,
+            Ok(())
+        );
+
+        let count_account = banks_client.get_account(count_key).await.unwrap().unwrap();
+        let vote_count =
+            VoteCount::unpack_unchecked(&count_account.data).expect("Failed to read VoteCount");
+        assert_eq!(vote_count.candidate1, 1);
+        assert_eq!(vote_count.candidate2, 1);
     }
 
-    #[test]
-    #[should_panic]
-    fn test_no_vote_without_check() {
-        //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-        // TEST MUST FAIL: where client passes in wrong checking account
-        //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    #[tokio::test]
+    async fn test_rent() {
+        //++++++++++++++++++++++++++++++++++++
+        // TEST: insufficient rent on check account
+        //++++++++++++++++++++++++++++++++++++
 
-        // mock program id
+        let program_id = Pubkey::new_unique();
 
-        let program_id = pubkey_rand();
-
-        // mock program data account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 2 * mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        LittleEndian::write_u32(&mut data[4..8], 0);
-        let owner = program_id;
-
-        let count_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
-
-        // mock voter account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 0];
-        let owner = pubkey_sys();
-
-        let voter_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            true,             // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
-
-        // mock voter check_account_info
-
-        let key = pubkey_rand(); // NOT THE CORRECT CHECK-ACCOUNT, WHICH SHOULD BE DETERMINISTICALLY DERIVED
-        let mut lamports = 0;
-        let mut data = vec![0; mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        let owner = program_id;
-
-        let check_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
-
-        let mut instruction_data: Vec<u8> = vec![0];
-
-        let accounts = vec![count_account_info, check_account_info, voter_account_info];
-
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[0..4]), 0);
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 0);
-
-        // vote for candidate 1 -- MUST FAIL, client supplied wrong check_account_info
-
-        instruction_data[0] = 1;
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
-        // <-- expect panic here
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_nodup_vote1() {
-        //++++++++++++++++++++++++++++++++++++++++++
-        // TEST MUST FAIL: reject a duplicate vote
-        //++++++++++++++++++++++++++++++++++++++++++
-
-        // mock program account
-
-        let program_id = pubkey_rand();
+        let mut program_test =
+            ProgramTest::new("vote_counter", program_id, processor!(process_instruction));
 
         // mock contract data account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 2 * mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        LittleEndian::write_u32(&mut data[4..8], 0);
-        let owner = program_id;
-
-        let count_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
+        let count_key = Pubkey::new_unique();
+        let data: Vec<u8> = vec![0; 2 * mem::size_of::<u32>()];
+        program_test.add_account(
+            count_key,
+            Account {
+                lamports: 60000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
         );
 
-        // mock voter account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 0];
-        let owner = pubkey_sys();
-
-        let voter_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            true,             // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
+        // voter account
+        let voter_keypair = Keypair::new();
+        let voter_key = voter_keypair.pubkey();
 
         // mock voter check_account_info
-
-        let key =
-            Pubkey::create_with_seed(voter_account_info.key, "checkvote", &program_id).unwrap(); // derived (correctly)
-        let mut lamports = 0;
+        let check_key = Pubkey::create_with_seed(&voter_key, "checkvote", &program_id).unwrap(); // derived (correctly)
         let mut data = vec![0; mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        let owner = program_id;
-
-        let check_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
+        LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
+        program_test.add_account(
+            check_key,
+            Account {
+                lamports: 1,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
         );
 
-        let mut instruction_data: Vec<u8> = vec![0];
+        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
-        let accounts = vec![count_account_info, check_account_info, voter_account_info];
+        // vote for candidate 1
+        let accounts = vec![
+            AccountMeta::new(count_key, false),
+            AccountMeta::new(check_key, false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new(voter_key, true),
+        ];
 
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[0..4]), 0);
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 0);
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction {
+                program_id,
+                accounts,
+                data: vec![1],
+            }],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[&payer, &voter_keypair], recent_blockhash);
 
-        // vote for candidate 1 -- SHOULD WORK
-
-        instruction_data[0] = 1;
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[0..4]), 1);
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 0);
-
-        // vote for candidate 2 -- MUST FAIL
-
-        instruction_data[0] = 2;
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
-        // <-- expect panic here
+        let result = banks_client.process_transaction(transaction).await;
+        assert_eq!(
+            result.err().unwrap().unwrap(),
+            TransactionError::from(VoteError::AccountNotRentExempt)
+        );
     }
 
-    #[test]
-    #[should_panic]
-    fn test_nodup_vote2() {
-        //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-        // TEST MUST FAIL: reject a duplicate vote (other way round)
-        //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    #[tokio::test]
+    async fn test_no_vote_without_check() {
+        //++++++++++++++++++++++++++++++++++++
+        // TEST: where client passes in wrong checking account
+        //++++++++++++++++++++++++++++++++++++
 
-        // mock program account
+        let program_id = Pubkey::new_unique();
 
-        let program_id = pubkey_rand();
+        let mut program_test =
+            ProgramTest::new("vote_counter", program_id, processor!(process_instruction));
 
         // mock contract data account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 2 * mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        LittleEndian::write_u32(&mut data[4..8], 0);
-        let owner = program_id;
-
-        let count_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
+        let count_key = Pubkey::new_unique();
+        let data: Vec<u8> = vec![0; 2 * mem::size_of::<u32>()];
+        program_test.add_account(
+            count_key,
+            Account {
+                lamports: 60000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
         );
 
-        // mock voter account
-
-        let key = pubkey_rand();
-        let mut lamports = 0;
-        let mut data = vec![0; 0];
-        let owner = pubkey_sys();
-
-        let voter_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            true,             // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
-        );
+        // voter account
+        let voter_keypair = Keypair::new();
+        let voter_key = voter_keypair.pubkey();
 
         // mock voter check_account_info
-
-        let key =
-            Pubkey::create_with_seed(voter_account_info.key, "checkvote", &program_id).unwrap(); // derived (correctly)
-        let mut lamports = 0;
+        let check_key = Pubkey::new_unique(); // NOT THE CORRECT CHECK-ACCOUNT, WHICH SHOULD BE DETERMINISTICALLY DERIVED
         let mut data = vec![0; mem::size_of::<u32>()];
-        LittleEndian::write_u32(&mut data[0..4], 0);
-        let owner = program_id;
-
-        let check_account_info = AccountInfo::new(
-            &key,             // account pubkey
-            false,            // is_signer
-            true,             // is_writable
-            &mut lamports,    // balance in lamports
-            &mut data,        // storage
-            &owner,           // owner pubkey
-            false,            // is_executable
-            Epoch::default(), // rent_epoch
+        LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
+        program_test.add_account(
+            check_key,
+            Account {
+                lamports: 1000000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
         );
 
-        let mut instruction_data: Vec<u8> = vec![0];
+        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
-        let accounts = vec![count_account_info, check_account_info, voter_account_info];
+        // vote for candidate 1
+        let accounts = vec![
+            AccountMeta::new(count_key, false),
+            AccountMeta::new(check_key, false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new(voter_key, true),
+        ];
 
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[0..4]), 0);
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 0);
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction {
+                program_id,
+                accounts,
+                data: vec![1],
+            }],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[&payer, &voter_keypair], recent_blockhash);
 
-        // vote for candidate 2 -- SHOULD WORK
+        let result = banks_client.process_transaction(transaction).await;
+        assert_eq!(
+            result.err().unwrap().unwrap(),
+            TransactionError::from(VoteError::AccountNotCheckAccount)
+        );
+    }
 
-        instruction_data[0] = 2;
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[0..4]), 0);
-        assert_eq!(LittleEndian::read_u32(&accounts[0].data.borrow()[4..8]), 1);
+    #[tokio::test]
+    async fn test_nodup_vote1() {
+        //++++++++++++++++++++++++++++++++++++
+        // TEST: reject a duplicate vote
+        //++++++++++++++++++++++++++++++++++++
 
-        // vote for candidate 1 -- MUST FAIL
+        let program_id = Pubkey::new_unique();
 
-        instruction_data[0] = 1;
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
-        // <-- expect panic here
+        let mut program_test =
+            ProgramTest::new("vote_counter", program_id, processor!(process_instruction));
+
+        // mock contract data account
+        let count_key = Pubkey::new_unique();
+        let data: Vec<u8> = vec![0; 2 * mem::size_of::<u32>()];
+        program_test.add_account(
+            count_key,
+            Account {
+                lamports: 60000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+
+        // voter account
+        let voter_keypair = Keypair::new();
+        let voter_key = voter_keypair.pubkey();
+
+        // mock voter check_account_info
+        let check_key = Pubkey::create_with_seed(&voter_key, "checkvote", &program_id).unwrap(); // derived (correctly)
+        let mut data = vec![0; mem::size_of::<u32>()];
+        LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
+        program_test.add_account(
+            check_key,
+            Account {
+                lamports: 1000000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+
+        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+        // vote for candidate 1
+        let accounts = vec![
+            AccountMeta::new(count_key, false),
+            AccountMeta::new(check_key, false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new(voter_key, true),
+        ];
+
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction {
+                program_id,
+                accounts,
+                data: vec![1],
+            }],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[&payer, &voter_keypair], recent_blockhash);
+
+        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+        let count_account = banks_client.get_account(count_key).await.unwrap().unwrap();
+        let vote_count =
+            VoteCount::unpack_unchecked(&count_account.data).expect("Failed to read VoteCount");
+        assert_eq!(vote_count.candidate1, 1);
+        assert_eq!(vote_count.candidate2, 0);
+
+        // vote AGAIN
+        let accounts = vec![
+            AccountMeta::new(count_key, false),
+            AccountMeta::new(check_key, false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new(voter_key, true),
+        ];
+
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction {
+                program_id,
+                accounts,
+                data: vec![1],
+            }],
+            Some(&payer.pubkey()),
+        );
+        // Fetch a new blockhash to avoid the second transaction having the same signature as the first
+        let recent_blockhash = banks_client
+            .get_new_blockhash(&recent_blockhash)
+            .await
+            .unwrap()
+            .0;
+        transaction.sign(&[&payer, &voter_keypair], recent_blockhash);
+
+        let result = banks_client.process_transaction(transaction).await;
+        assert_eq!(
+            result.err().unwrap().unwrap(),
+            TransactionError::from(VoteError::AlreadyVoted)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_nodup_vote2() {
+        //++++++++++++++++++++++++++++++++++++
+        // TEST: reject a second vote for a different candidate
+        //++++++++++++++++++++++++++++++++++++
+
+        let program_id = Pubkey::new_unique();
+
+        let mut program_test =
+            ProgramTest::new("vote_counter", program_id, processor!(process_instruction));
+
+        // mock contract data account
+        let count_key = Pubkey::new_unique();
+        let data: Vec<u8> = vec![0; 2 * mem::size_of::<u32>()];
+        program_test.add_account(
+            count_key,
+            Account {
+                lamports: 60000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+
+        // voter account
+        let voter_keypair = Keypair::new();
+        let voter_key = voter_keypair.pubkey();
+
+        // mock voter check_account_info
+        let check_key = Pubkey::create_with_seed(&voter_key, "checkvote", &program_id).unwrap(); // derived (correctly)
+        let mut data = vec![0; mem::size_of::<u32>()];
+        LittleEndian::write_u32(&mut data[0..4], 0); // set storage to zero
+        program_test.add_account(
+            check_key,
+            Account {
+                lamports: 1000000,
+                data,
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+
+        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+        // vote for candidate 1
+        let accounts = vec![
+            AccountMeta::new(count_key, false),
+            AccountMeta::new(check_key, false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new(voter_key, true),
+        ];
+
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction {
+                program_id,
+                accounts,
+                data: vec![1],
+            }],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[&payer, &voter_keypair], recent_blockhash);
+
+        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+        let count_account = banks_client.get_account(count_key).await.unwrap().unwrap();
+        let vote_count =
+            VoteCount::unpack_unchecked(&count_account.data).expect("Failed to read VoteCount");
+        assert_eq!(vote_count.candidate1, 1);
+        assert_eq!(vote_count.candidate2, 0);
+
+        // vote AGAIN, but for candidate 2
+        let accounts = vec![
+            AccountMeta::new(count_key, false),
+            AccountMeta::new(check_key, false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new(voter_key, true),
+        ];
+
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction {
+                program_id,
+                accounts,
+                data: vec![2],
+            }],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[&payer, &voter_keypair], recent_blockhash);
+
+        let result = banks_client.process_transaction(transaction).await;
+        assert_eq!(
+            result.err().unwrap().unwrap(),
+            TransactionError::from(VoteError::AlreadyVoted)
+        );
     }
 }
