@@ -6,3 +6,4 @@
 .env
 keypair.json
 **/.DS_Store
+src/target
