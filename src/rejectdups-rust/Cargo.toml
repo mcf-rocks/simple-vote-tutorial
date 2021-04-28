@@ -12,10 +12,9 @@ edition = "2018"
 entrypoint = []
 
 [dependencies]
+solana-program = "1.6.1"
 byteorder = "1.3"
 remove_dir_all = "=0.5.0"
-solana-program = "1.5.1"
-solana-sdk = "1.5.1"
 num-traits = "0.2"
 num-derive = "0.3"
 thiserror = "1.0"
@@ -25,7 +24,8 @@ rand = { version = "0.7.0"}
 assert_matches = "1.4.0"
 base64 = "0.13.0"
 tokio = { version = "0.3", features = ["macros"]}
-solana-program-test = "1.5.1"
+solana-program-test = "=1.6.1"
+solana-sdk = "=1.6.1"
 
 [lib]
 name = "solana_bpf_rejectdups"

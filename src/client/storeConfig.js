@@ -15,7 +15,7 @@ export async function getStore(connection, file) {
     config = await store.load(file)
   } catch (err) {
 
-    console.log("No file:",file)
+    //console.log("No file:",file)
     return { inStore: false }
 
   }
