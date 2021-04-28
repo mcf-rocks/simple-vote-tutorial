@@ -25,7 +25,7 @@ If this is your first time using Docker or Rust, these [Installation Notes](READ
 If not already, install (current version of) Solana CLI 
 
 ```
-sh -c “$(curl -sSfL https://release.solana.com/v1.6.1/install)"
+sh -c "$(curl -sSfL https://release.solana.com/v1.6.1/install)"
 ```
 
 This code is designed to be used with the tutorial, but if you just want to 'make it do something':
