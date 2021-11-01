@@ -43,7 +43,7 @@ $ brew install docker-machine
 # The next two commands to install virtualbox & create a machine may need a
 # password. You may also need to address a System Preference setting and
 # re-try the installation.
-$ brew cask install virtualbox
+$ brew install --cask virtualbox
 $ docker-machine create --driver virtualbox default
 # To see config info:
 $ docker-machine env default
